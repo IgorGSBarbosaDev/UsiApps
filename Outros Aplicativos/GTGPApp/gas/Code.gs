@@ -4,19 +4,6 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('GT/GP')
-    .addItem('Abrir painel nesta planilha', 'showDashboardSidebar')
-    .addToUi();
-}
-
-function showDashboardSidebar() {
-  const output = HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('GT/GP · Painel');
-  SpreadsheetApp.getUi().showSidebar(output);
-}
-
 function getDashboardData() {
   const spreadsheet = getSpreadsheet_();
   const sheets = DATA_TABS.map(function (name) {
@@ -49,6 +36,5 @@ function getDashboardData() {
 }
 
 function getSpreadsheet_() {
-  const active = SpreadsheetApp.getActiveSpreadsheet();
-  return active || SpreadsheetApp.openById(SPREADSHEET_ID);
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
 }

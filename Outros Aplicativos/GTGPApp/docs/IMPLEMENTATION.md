@@ -21,7 +21,7 @@
 
 - `src/`: React, TypeScript, Tailwind e componentes shadcn; normalização dos cabeçalhos, cruzamento pela matrícula, métricas e exportação.
 - `src/data/synthetic-preview.json`: fixture simulada usada apenas em `preview.html`.
-- `gas/Code.gs`: `doGet`, menu lateral opcional e leitura das duas abas configuradas usando valores de exibição; não grava células.
+- `gas/Code.gs`: `doGet` e leitura das duas abas configuradas usando valores de exibição; não grava células nem adiciona interface dentro da planilha.
 - `gas/Config.gs`: ID da planilha e nomes fixos das abas de dados.
 - `gas/Index.html`: bundle HTML independente gerado para Apps Script.
 - `gas/appsscript.json`: fuso `America/Sao_Paulo`, execução privada e escopo Sheets necessário para ler pelo ID fixo.
@@ -61,9 +61,11 @@ Abra `preview.html` para usar a prévia offline. `npm run build` atualiza a pré
 
 ## Sincronização e implantação Google
 
-O estado local já contém o código e o manifesto privados, mas a sessão atual do Clasp e a planilha preparada estão autenticadas em contas Google diferentes. A sincronização foi deixada pendente para evitar enviar o código a um projeto preso a outra planilha ou alterar compartilhamento. Entre no fluxo oficial do Clasp com a mesma conta proprietária da planilha; não envie senha ou token por mensagem.
+O estado local já contém o código e o manifesto privados, mas a sessão atual do Clasp e a planilha preparada estão autenticadas em contas Google diferentes. A sincronização foi deixada pendente para evitar enviar o código a um projeto preso a outra planilha ou alterar compartilhamento. No terminal local, execute `npx clasp login` e entre pelo navegador com a mesma conta Google que tem acesso à planilha; não envie senha, token nem arquivo de credenciais por mensagem.
 
 Depois de alinhar a conta, crie o projeto vinculado à planilha existente (sem `--type sheets`, que cria uma planilha nova), confira o ID antes de enviar e execute `clasp push` dentro de `gas/`. O envio ao Apps Script, commit/push Git e implantação do Web App são operações distintas. A implantação fica privada (`MYSELF`). O Google pode solicitar autorização de acesso ao Sheets por conta do escopo declarado.
+
+O Web App abre a planilha fixa pelo ID usando `SpreadsheetApp.openById`, que a documentação do Apps Script associa ao escopo `spreadsheets`. Esse escopo permite leitura e escrita no nível OAuth, mas o aplicativo só chama métodos de leitura (`getDataRange` e `getDisplayValues`); não há função de gravação, edição ou compartilhamento no código.
 
 ## Entrega Git
 
