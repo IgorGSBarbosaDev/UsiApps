@@ -1,158 +1,43 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createContext, runInContext } from "node:vm";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "../..");
+const gasSourceDir = path.join(projectRoot, "gas", "src");
 const viewsDir = path.join(projectRoot, "gas", "src", "views");
 const workbookPath = path.join(projectRoot, ".artifacts", "gtgp-workbook.json");
 const outputPath = path.join(projectRoot, "preview.html");
 
-function normalizeId(value) {
-  return String(value ?? "").trim().replace(/\s+/g, "").toLocaleUpperCase("pt-BR");
+async function listGasFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nestedFiles = await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return listGasFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith(".gs") ? [entryPath] : [];
+  }));
+  return nestedFiles.flat().sort((left, right) => left.localeCompare(right));
 }
 
-function countMissing(rows) {
-  return rows.filter((row) => !normalizeId(row.matricula)).length;
-}
+async function createDashboardData(workbook) {
+  const context = createContext({ GTGP_WORKBOOK_DATA: workbook });
+  const generatedWorkbookPath = path.join(gasSourceDir, "data", "WorkbookData.gs");
+  const sourceFiles = await listGasFiles(gasSourceDir);
+  if (sourceFiles.length === 0) throw new Error("Nenhum arquivo .gs foi encontrado para gerar a prévia.");
 
-function countDuplicates(rows) {
-  const seen = new Set();
-  let duplicates = 0;
-  for (const row of rows) {
-    const id = normalizeId(row.matricula);
-    if (!id) continue;
-    if (seen.has(id)) duplicates += 1;
-    else seen.add(id);
+  for (const sourceFile of sourceFiles) {
+    if (sourceFile === generatedWorkbookPath) continue;
+    const source = await readFile(sourceFile, "utf8");
+    runInContext(source, context, { filename: path.relative(projectRoot, sourceFile) });
   }
-  return duplicates;
-}
 
-function createDashboardData(workbook) {
-  const base = workbook.sheets.find((sheet) => sheet.name === "Base_Principal");
-  const agent = workbook.sheets.find((sheet) => sheet.name === "TB_Agente");
-  if (!base || !agent) throw new Error("O artefato não contém Base_Principal e TB_Agente.");
-
-  const fields = new Map();
-  const fieldLabels = {
-    dataefetivo: "Data efetiva",
-    matricula: "Matrícula",
-    nome: "Nome",
-    descricaocargo: "Cargo",
-    idade: "Idade",
-    sexo: "Sexo",
-    programavigente: "Programa vigente",
-    statustrainee: "Status trainee",
-    enquadre: "Enquadre",
-    dataadmissao: "Data de admissão",
-    geracaogt: "Geração GT",
-    geracaogp: "Geração GP",
-    tempocasa: "Tempo de casa",
-    descricaoceo1: "Estrutura · nível 1",
-    descricaoceo2: "Estrutura · nível 2",
-    descricaoceo3: "Estrutura · nível 3",
-    descricaoceo4: "Estrutura · nível 4",
-    descricaoceo5: "Estrutura · nível 5",
-    descricaoceo6: "Estrutura · nível 6",
-    descricaoceo7: "Estrutura · nível 7",
-    centrocusto: "Centro de custo",
-    descricaonivel1: "Descrição do nível 1",
-    nivel2: "Nível 2",
-    localidade: "Localidade",
-    curso: "Curso",
-    instituicao: "Instituição",
-    observacao: "Observação",
-    vagamapeada: "Vaga mapeada",
-    industrialstaff: "Industrial / Staff",
-    rotacao: "Rotação",
-    exestagiario: "Ex-estagiário",
-    areafim: "Área final",
-    nota20261: "Nota 2026.1",
-    potencial20261: "Potencial 2026.1",
-    etapa20262: "Etapa 2026.2",
-    nota20262: "Nota 2026.2",
-    potencial20262: "Potencial 2026.2",
-    historicoavaliacoes: "Histórico de avaliações",
-    ultimocicloavaliacao: "Último ciclo avaliado",
-    ultimanota: "Última nota registrada",
-    ultimopotencial: "Último potencial registrado",
-  };
-  for (const sheet of [base, agent]) {
-    for (const header of sheet.headers) {
-      if (!header.key) continue;
-      const field = fields.get(header.key) ?? {
-        key: header.key,
-        label: fieldLabels[header.key] || header.original || header.key,
-        source: [],
-      };
-      if (!field.source.includes(sheet.name)) field.source.push(sheet.name);
-      fields.set(header.key, field);
-    }
+  const response = context.gtgpGetDashboardData();
+  if (!response || response.ok !== true || !response.data) {
+    const code = response && response.error && response.error.code;
+    throw new Error("O backend Apps Script recusou o artefato da prévia" + (code ? " (" + code + ")" : "") + ".");
   }
-  const baseRows = base.rows.map((row) => ({ ...row }));
-  const agentRows = agent.rows.map((row) => ({ ...row }));
-  const baseIds = new Set(baseRows.map((row) => normalizeId(row.matricula)).filter(Boolean));
-  const agentIds = new Set(agentRows.map((row) => normalizeId(row.matricula)).filter(Boolean));
-  const quality = {
-    baseRows: baseRows.length,
-    agentRows: agentRows.length,
-    duplicateBaseIds: countDuplicates(baseRows),
-    duplicateAgentIds: countDuplicates(agentRows),
-    missingBaseIds: countMissing(baseRows),
-    missingAgentIds: countMissing(agentRows),
-    unmatchedBaseRows: baseRows.filter((row) => {
-      const id = normalizeId(row.matricula);
-      return Boolean(id) && !agentIds.has(id);
-    }).length,
-    unmatchedAgentRows: agentRows.filter((row) => {
-      const id = normalizeId(row.matricula);
-      return Boolean(id) && !baseIds.has(id);
-    }).length,
-    blankNames: baseRows.filter((row) => !String(row.nome ?? "").trim()).length,
-  };
-
-  const people = new Map();
-  const firstBaseById = new Map();
-  let serial = 0;
-  baseRows.forEach((row, index) => {
-    serial += 1;
-    const matricula = String(row.matricula ?? "").trim();
-    const normalizedId = normalizeId(matricula);
-    const duplicate = Boolean(normalizedId && firstBaseById.has(normalizedId));
-    const id = normalizedId && !duplicate ? "id:" + normalizedId : "base:" + (index + 2) + ":" + serial;
-    const person = { id, matricula, values: { ...row }, sources: ["Base_Principal"] };
-    people.set(id, person);
-    if (normalizedId && !firstBaseById.has(normalizedId)) firstBaseById.set(normalizedId, person);
-  });
-
-  agentRows.forEach((row, index) => {
-    const matricula = String(row.matricula ?? "").trim();
-    const normalizedId = normalizeId(matricula);
-    let target = normalizedId ? firstBaseById.get(normalizedId) : undefined;
-    if (!target) {
-      serial += 1;
-      const id = normalizedId ? "agent:" + normalizedId + ":" + (index + 2) : "agent:" + (index + 2) + ":" + serial;
-      target = { id, matricula, values: {}, sources: [] };
-      people.set(id, target);
-    }
-    Object.entries(row).forEach(([key, value]) => {
-      if (value !== "" && (!target.values[key] || target.values[key] === "")) target.values[key] = value;
-    });
-    if (!target.sources.includes("TB_Agente")) target.sources.push("TB_Agente");
-  });
-
-  return {
-    source: {
-      fileName: workbook.fileName,
-      version: String(workbook.hash || "").toLowerCase(),
-      simulated: workbook.simulated === true,
-    },
-    fields: [...fields.values()],
-    people: [...people.values()].sort((left, right) =>
-      String(left.values.nome ?? "").localeCompare(String(right.values.nome ?? ""), "pt-BR"),
-    ),
-    quality,
-  };
+  return response.data;
 }
 
 function previewAdapter(data) {
@@ -212,7 +97,7 @@ for (const match of html.matchAll(includePattern)) {
   lastIndex = match.index + match[0].length;
 }
 assembled += html.slice(lastIndex);
-html = assembled.replace("<body>", "<body>\n" + previewAdapter(createDashboardData(workbook)));
+html = assembled.replace("<body>", "<body>\n" + previewAdapter(await createDashboardData(workbook)));
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, html, "utf8");
 process.stdout.write("Prévia local gerada em " + path.relative(projectRoot, outputPath) + ".\n");

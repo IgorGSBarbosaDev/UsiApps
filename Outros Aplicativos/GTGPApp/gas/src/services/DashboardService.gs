@@ -146,7 +146,7 @@ function gtgpBuildPeople_(baseRows, agentRows) {
 
     Object.keys(row.values).forEach(function (key) {
       var value = row.values[key];
-      if (value !== '' || target.values[key] === undefined || target.values[key] === '') {
+      if (value !== '' && (target.values[key] === undefined || target.values[key] === '')) {
         target.values[key] = value;
       }
     });

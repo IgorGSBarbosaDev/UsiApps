@@ -63,6 +63,8 @@ Erro:
 
 `people` é uma lista de `{ id, matricula, values, sources }`. `id` identifica unicamente o registro de pessoa na resposta; `matricula` é sempre texto; `values` é um mapa de chaves de campo para valores textuais; e `sources` lista as abas que contribuíram com valores para a pessoa. Valores vazios permanecem vazios, sem serem convertidos em zero.
 
+Quando a mesma pessoa aparece nas duas abas, `Base_Principal` é a fonte prioritária: um valor já preenchido nela é preservado. `TB_Agente` complementa os campos que estiverem vazios na base e também mantém registros sem correspondência. Essa regra vale igualmente para qualquer campo compartilhado pelas abas.
+
 `quality` preserva as métricas atuais:
 
 | Chave | Significado |

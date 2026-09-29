@@ -15,7 +15,7 @@ npm run import:workbook
 npm run preview:local
 ```
 
-O primeiro comando atualiza os dois artefatos derivados a partir do XLSX. O segundo usa o JSON e as views de `gas/src/views/` para gerar `preview.html` como arquivo independente. Abra `preview.html` diretamente no navegador. A prévia simula no cliente as respostas do Apps Script e usa exclusivamente os dados marcados como simulados.
+O primeiro comando atualiza os dois artefatos derivados a partir do XLSX. O segundo carrega as regras dos arquivos `.gs` no runtime local do Node.js e as executa sobre o JSON derivado, depois compõe as views de `gas/src/views/` em `preview.html`. Assim, a prévia e o Apps Script compartilham as regras de domínio. Abra `preview.html` diretamente no navegador; a adaptação local simula apenas a ponte `google.script.run` e usa exclusivamente dados marcados como simulados.
 
 ## Organização do código
 
@@ -39,7 +39,7 @@ O `.clasp.json` fica local, ignorado pelo Git e não deve ser copiado para docum
 
 Para atualizar uma implantação existente, primeiro crie uma nova versão do projeto Apps Script e depois aponte a implantação para essa versão em **Deploy > Manage deployments**. `clasp version` e `clasp redeploy` também são operações separadas do `clasp push`. Uma nova implantação criada com `clasp deploy` não equivale a atualizar a implantação existente. Consulte a [documentação oficial do clasp](https://developers.google.com/apps-script/guides/clasp) e de [versões e implantações](https://developers.google.com/apps-script/concepts/deployments).
 
-O push do Git também é independente: ele sincroniza commits com o remoto Git, não com o Apps Script. Nesta etapa, não foi executado `clasp push`, não foi criada versão Apps Script, não foi atualizada/publicada implantação e não foi feito commit ou push Git.
+O push do Git é independente e sincroniza commits com o remoto Git. Para confirmar o estado do projeto Apps Script, consulte as implantações e versões com `npx @google/clasp deployments` e `npx @google/clasp versions`; esses comandos são somente de leitura. Registre separadamente os resultados de sincronização Git, envio de código e atualização de implantação.
 
 ## Configuração Apps Script
 

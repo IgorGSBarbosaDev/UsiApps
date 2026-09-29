@@ -54,7 +54,10 @@
       var visibleFields = selectedKeys.map(function (key) { return available.get(key); });
       var results = filteredPeople(dataset, state);
       var pages = Math.max(1, Math.ceil(results.length / state.pageSize));
-      var page = Math.min(Math.max(1, state.page), pages);
+      var requestedPage = Number(state.pageNumber);
+      if (!Number.isFinite(requestedPage)) requestedPage = 1;
+      var page = Math.min(Math.max(1, Math.floor(requestedPage)), pages);
+      state.pageNumber = page;
       var shown = results.slice((page - 1) * state.pageSize, page * state.pageSize);
       var programs = Array.from(new Set(dataset.people.map(function (person) { return window.GTGPRender.value(person, 'programavigente'); }).filter(Boolean)))
         .sort(function (a, b) { return a.localeCompare(b, 'pt-BR', { numeric: true }); });
