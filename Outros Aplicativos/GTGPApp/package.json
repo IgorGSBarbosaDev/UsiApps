@@ -8,7 +8,8 @@
     "build": "npm run build:preview && npm run build:gas",
     "build:preview": "node scripts/build.mjs preview",
     "build:gas": "node scripts/build.mjs gas",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "import:workbook": "node scripts/import-workbook.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -36,6 +37,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }
