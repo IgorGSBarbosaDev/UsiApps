@@ -6,7 +6,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "../..");
 const viewsDir = path.join(projectRoot, "gas", "src", "views");
 const workbookPath = path.join(projectRoot, ".artifacts", "gtgp-workbook.json");
-const outputPath = path.join(projectRoot, ".artifacts", "gtgp-local-preview.html");
+const outputPath = path.join(projectRoot, "preview.html");
 
 function normalizeId(value) {
   return String(value ?? "").trim().replace(/\s+/g, "").toLocaleUpperCase("pt-BR");
@@ -199,7 +199,7 @@ try {
 if (workbook.simulated !== true) throw new Error("A prévia local exige simulated=true no artefato de origem.");
 
 let html = await readFile(path.join(viewsDir, "Index.html"), "utf8");
-html = html.replace(/<\?\s*var include = gtgpInclude;\s*\?>/, "");
+html = html.replace(/^[\t ]*<\?\s*var include = gtgpInclude;\s*\?>[\t ]*(?:\r?\n|$)/m, "");
 const includePattern = /<\?!=\s*include\('([^']+)'\);\s*\?>/g;
 let assembled = "";
 let lastIndex = 0;

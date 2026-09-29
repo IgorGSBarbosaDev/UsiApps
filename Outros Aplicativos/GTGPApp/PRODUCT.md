@@ -1,55 +1,41 @@
-# Product
+# Produto — Painel GT/GP
 
-<!-- impeccable:product-schema 1 -->
+## Plataforma
 
-## Platform
+Web App do Google Apps Script com `HtmlService`, JavaScript, HTML e CSS nativos. Node.js/npm são usados somente para `clasp`, importação do workbook e geração da prévia local.
 
-web
+## Propósito
 
-## Stack
+Apresentar os registros GT/GP em uma interface de consulta com visão geral, pesquisa de pessoas, avaliações, qualidade dos dados e exportação XLSX. O painel é somente leitura: não altera a fonte nem recebe edição de registros.
 
-Google Apps Script HTML Service bound to a Google Sheet, with a Vite and React interface using local shadcn/ui components. A standalone HTML build provides an offline visual preview.
+## Fonte e dados
 
-## Users
+- Fonte canônica: `dashboardGTGP/Base GTGP.xlsx`.
+- Abas de origem: `Base_Principal` e `TB_Agente`.
+- Chave de junção: `Matricula`, transportada como texto.
+- Todos os registros são simulados. O snapshot é gerado para o Apps Script e para a prévia local; não há leitura de Google Sheets em tempo de execução.
+- Campos vazios permanecem vazios e não são tratados como zero.
 
-Primary users are inferred to be internal GT/GP program operators who need to review trainee profiles and evaluation data. This audience assumption can be corrected later.
+## Pessoas usuárias e contexto
 
-## Product Purpose
+O painel atende à consulta da base GT/GP e à revisão de lacunas nos registros. O workbook canônico contém somente dados simulados. A prévia local usa os artefatos gerados e pode ser aberta como arquivo HTML independente.
 
-Provide a simple read-only dashboard for data that the user pastes into a dedicated Google Sheet. Success means operators can understand the current data, find a person, review every supplied field, and spot incomplete or inconsistent records.
+## Capacidades
 
-## Positioning
+- Visão geral de totais e distribuições.
+- Pesquisa e filtros de pessoas, seleção de colunas e perfil com os campos disponíveis.
+- Resumo de avaliações e campos ausentes.
+- Verificações de matrículas, correspondências entre abas e nomes vazios.
+- Exportação XLSX dos registros e campos selecionados, sem escrita na fonte.
 
-The MVP reads the user's one manually maintained GT/GP Sheet and joins its two tables by Matricula. Users keep control of the source records in Sheets; the app focuses on useful views and checks.
+## Limites operacionais
 
-## Operating Context
+- Atualizar `dashboardGTGP/Base GTGP.xlsx` exige regenerar `WorkbookData.gs` e o JSON local com `npm run import:workbook`.
+- O snapshot incorporado ao Apps Script só chega ao projeto remoto após sincronização com `clasp`; a implantação versionada precisa ser atualizada separadamente.
+- `gas/appsscript.json` preserva `executeAs: USER_DEPLOYING` e `access: ANYONE`. A configuração de acesso não foi alterada nesta etapa e os registros permanecem simulados.
 
-The workbook supplied for the prototype contains synthetic data. The newly created Google Sheet is intentionally blank apart from its schema and instructions. Users paste their data there. The application is served by Google Apps Script and has an independent local HTML preview.
+## Diretrizes de interface
 
-## Capabilities and Constraints
-
-- Source tabs: `Base_Principal` and `TB_Agente`, joined by `Matricula`.
-- Support a dashboard, people search and detail, evaluation views, data-quality checks, spreadsheet navigation, and XLSX export.
-- The application reads the current spreadsheet; record entry and corrections happen directly in Google Sheets.
-- No Microsoft Graph, SharePoint, Power Automate, or other Microsoft integration in this MVP.
-- No personal or other real-company data is included in the demo dataset; the supplied workbook was confirmed as simulated.
-- The deployed web app must remain restricted to the deploying user unless the user later asks to broaden access.
-
-## Brand Commitments
-
-- Use the Usiminas green `#84bd00` and a dark green.
-- Use a desktop-style application shell with sidebar navigation, clear and useful visualization screens, and shadcn/ui components wherever practical.
-- Keep the interface simple, intuitive, and focused on the data.
-
-## Evidence on Hand
-
-- `../../dashboardGTGP/Base GTGP.xlsx` is the supplied synthetic workbook used to understand the two source schemas and provide local preview data.
-- Google Sheet: [GT-GP - Base de Dados (MVP)](https://docs.google.com/spreadsheets/d/1LU6Vej6ZgEx_urYH-I4JyDss2Tl8fsWNc2NvZAtIBdw/edit), created with blank data tabs and paste instructions.
-
-## Product Principles
-
-- Keep the Google Sheet as the editable source of truth.
-- Show missing values as missing; never count them as zero.
-- Make the relationship between the two tabs and any join issues visible.
-- Keep all source fields available in the people detail view.
-- Label all records in the offline preview as synthetic.
+- Manter verde Usiminas `#84bd00` e verde escuro.
+- Usar navegação simples, hierarquia legível e HTML semântico.
+- Distinguir campos ausentes de valores zero e mostrar a origem dos dados.

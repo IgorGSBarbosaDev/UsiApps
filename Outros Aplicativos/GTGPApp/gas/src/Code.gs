@@ -1,5 +1,5 @@
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  return HtmlService.createTemplateFromFile('src/views/Index').evaluate()
     .setTitle('GT/GP · Painel de gestão')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }

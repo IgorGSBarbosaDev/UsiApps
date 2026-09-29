@@ -1,26 +1,38 @@
-# Painel GT/GP — MVP
+# Painel GT/GP
 
-Aplicativo Google Apps Script com visual desktop, navegação lateral e painéis de pessoas, avaliações e qualidade dos dados.
+Painel somente leitura implementado com Google Apps Script nativo: `HtmlService`, JavaScript, HTML e CSS. A versão atual usa um snapshot derivado de dados inteiramente simulados; não lê nem grava uma Google Sheet em tempo de execução.
 
 ## Fonte de dados
 
-A planilha editável **GT-GP - Base de Dados (MVP)** está [neste Google Sheets](https://docs.google.com/spreadsheets/d/1LU6Vej6ZgEx_urYH-I4JyDss2Tl8fsWNc2NvZAtIBdw/edit). Ela contém `Base_Principal`, `TB_Agente`, `Controle` e `Instruções`. As duas abas de dados começam sem registros; cole seus dados a partir da linha 2 e mantenha a linha de cabeçalhos.
+A fonte canônica é [`dashboardGTGP/Base GTGP.xlsx`](../../dashboardGTGP/Base%20GTGP.xlsx), na raiz deste repositório. O importador consome as abas `Base_Principal` e `TB_Agente` e une os registros por `Matricula`, mantida como texto. Todos os dados são simulados.
 
-O workbook fornecido tem dados inteiramente simulados. Eles aparecem somente na prévia local `preview.html` e não foram copiados para a planilha editável. O MVP não integra com Microsoft Graph, SharePoint ou outros produtos Microsoft. O painel conectado lê as abas e não grava nelas.
+O snapshot incluído no Apps Script e os artefatos locais são derivados do workbook. Atualizar o arquivo XLSX não altera automaticamente o painel publicado. O contrato, validações e formato dos artefatos estão em [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md).
 
-O Apps Script `Dashboard GTGP` é independente e fica na conta `appusiminastp@gmail.com`. Essa conta precisa de acesso de leitor à planilha. Durante os testes, o Web App permite acesso a qualquer conta Google conectada (`ANYONE`) e executa como `appusiminastp`; qualquer pessoa conectada que obtenha o link pode ver os dados carregados. Mantenha somente dados simulados enquanto estiver assim e volte para `MYSELF` antes de usar dados reais.
+## Regenerar dados e abrir a prévia
 
-## Prévia local
-
-Abra `preview.html` diretamente no navegador para ver o painel com a amostra simulada, sem Apps Script ou conexão à rede. A prévia identifica a fonte sintética e os botões refletem que a amostra local foi atualizada.
-
-## Desenvolvimento e operação
+Execute na pasta `Outros Aplicativos/GTGPApp`:
 
 ```powershell
 npm install
-npm run typecheck
-npm run build
-npm run dev -- --mode preview
+npm run import:workbook
+npm run preview:local
 ```
 
-O build atualiza a prévia e `gas/Index.html`. Consulte [o plano e as instruções de operação](docs/IMPLEMENTATION.md). O código do Apps Script está em `gas/`; o `.clasp.json` local usa `gas/` como raiz do projeto remoto e é ignorado pelo Git. `.clasprc.json`, `.artifacts/` e credenciais também ficam fora do Git.
+O importador gera `gas/src/data/WorkbookData.gs` e `.artifacts/gtgp-workbook.json`. Depois, o gerador monta a prévia local independente em `preview.html`. Abra esse arquivo diretamente no navegador; a prévia usa o snapshot simulado local e não precisa de Apps Script nem de servidor de desenvolvimento.
+
+## Organização
+
+- `gas/src/Code.gs`: entrada do Web App e inclusão de templates HTML.
+- `gas/src/controllers/`: funções públicas do Apps Script para leitura dos dados e exportação XLSX.
+- `gas/src/services/`: regras para montar o painel e gerar o arquivo exportado.
+- `gas/src/repositories/`: validação e leitura do snapshot incorporado ao código.
+- `gas/src/data/WorkbookData.gs`: dados simulados gerados pelo importador.
+- `gas/src/views/`: HTML, CSS e JavaScript do navegador, separados em views e controladores de interface.
+- `scripts/import-workbook.mjs`: importação do XLSX canônico.
+- `gas/scripts/build-local-preview.mjs`: montagem da prévia sem framework de frontend.
+
+## Sincronização e publicação
+
+`npx @google/clasp push`, executado na raiz de `GTGPApp`, sincroniza os arquivos locais de `gas/` com o projeto Apps Script indicado pelo `.clasp.json` local. Essa operação não envia alterações ao Git e não atualiza, por si só, a implantação Web App versionada. Para publicar código novo, é necessário criar uma versão e atualizar a implantação separadamente. Os passos estão em [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+
+O `.clasp.json` permanece local e ignorado pelo Git. O manifesto preserva os valores atuais de `executeAs` e `access`; os dados devem continuar simulados enquanto o acesso estiver configurado como `ANYONE`.
