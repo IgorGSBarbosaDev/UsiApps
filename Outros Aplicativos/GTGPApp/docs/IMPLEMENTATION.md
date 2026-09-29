@@ -6,7 +6,9 @@
 - **Sem integração Microsoft no MVP:** sem Microsoft Graph, SharePoint, Power Automate ou importação automática. O único caminho de dados da versão conectada é Google Sheets → Apps Script → painel.
 - **Dados de demonstração:** os registros do workbook fornecido são simulados. Eles ficam na prévia local independente e não são copiados para a planilha editável.
 - **Painel somente leitura:** edição e correção acontecem na planilha; o app consulta as abas e oferece exportação XLSX no navegador.
-- **Acesso privado:** o manifesto limita a implantação a `MYSELF`, executando como quem implanta. Não ampliar acesso nem compartilhar a planilha como parte deste MVP.
+- **Conta do Apps Script:** o projeto independente `Dashboard GTGP` e a implantação pertencem à conta `appusiminastp@gmail.com`.
+- **Acesso à planilha:** a conta do Apps Script recebe acesso de leitor à planilha de dados; o painel não grava nela.
+- **Acesso privado:** o manifesto limita a implantação a `MYSELF`, executando como quem implanta. Com a implantação feita por `appusiminastp@gmail.com`, somente essa conta abre o Web App.
 - **Visual:** layout desktop com sidebar, navegação simples, cores Usiminas `#84bd00` e verde escuro, com componentes shadcn locais.
 
 ## Experiência e telas
@@ -33,7 +35,7 @@
 2. Implementar as telas, filtros, perfil, estados vazio/carregando/erro, indicadores, visualizações e leitura somente das duas abas de dados.
 3. Gerar `preview.html` com dados simulados, sem depender de Apps Script ou rede, para revisão visual local.
 4. Gerar `gas/Index.html` sem incorporar a fixture sintética; configurar o Apps Script para ler apenas a planilha e as abas fixadas no projeto.
-5. Sincronizar com `clasp`, criar uma versão e implantar como Web App privado depois de autenticar Clasp na mesma conta que tem acesso à planilha.
+5. Sincronizar com `clasp` o projeto independente `Dashboard GTGP` autenticado como `appusiminastp@gmail.com`, criar uma versão e implantar como Web App privado. A conta precisa ter acesso de leitor à planilha.
 6. Conferir planilha vazia, testar a colagem das bases autorizadas, verificar indicadores e qualidade, revisar a exportação, conferir o escopo, então commitar e enviar somente os arquivos de `Outros Aplicativos/GTGPApp`.
 
 ### Critérios de aceite
@@ -43,7 +45,8 @@
 - Quando a planilha não contém registros, as telas orientam a colagem sem sugerir que filtros precisam ser limpos.
 - Quando há dados, busca, filtros, perfil completo, métricas, gráficos, qualidade e exportação usam todos os campos mapeados.
 - Dados ausentes não são convertidos em zero e o painel não grava na fonte.
-- A implantação permanece privada; a planilha não muda de compartilhamento.
+- A implantação permanece privada (`MYSELF`) e só a conta implantadora pode abrir o Web App.
+- A planilha fica compartilhada com a conta `appusiminastp@gmail.com` com permissão de leitura.
 - Todos os artefatos do produto ficam dentro desta pasta `GTGPApp`.
 
 ## Operação local
@@ -61,9 +64,9 @@ Abra `preview.html` para usar a prévia offline. `npm run build` atualiza a pré
 
 ## Sincronização e implantação Google
 
-O estado local já contém o código e o manifesto privados, mas a sessão atual do Clasp e a planilha preparada estão autenticadas em contas Google diferentes. A sincronização foi deixada pendente para evitar enviar o código a um projeto preso a outra planilha ou alterar compartilhamento. No terminal local, execute `npx clasp login` e entre pelo navegador com a mesma conta Google que tem acesso à planilha; não envie senha, token nem arquivo de credenciais por mensagem.
+O projeto independente `Dashboard GTGP` foi criado na conta `appusiminastp@gmail.com`; essa conta também deve ter permissão de leitor na planilha. O arquivo `.clasp.json`, ignorado pelo Git na raiz deste aplicativo, aponta `rootDir` para `gas/` e identifica o projeto remoto. `.clasprc.json` guarda credenciais e nunca deve ser versionado.
 
-Depois de alinhar a conta, crie o projeto vinculado à planilha existente (sem `--type sheets`, que cria uma planilha nova), confira o ID antes de enviar e execute `clasp push` dentro de `gas/`. O envio ao Apps Script, commit/push Git e implantação do Web App são operações distintas. A implantação fica privada (`MYSELF`). O Google pode solicitar autorização de acesso ao Sheets por conta do escopo declarado.
+Execute `npx clasp push --force` na raiz de `GTGPApp` para enviar os arquivos de `gas/`, depois crie a versão e a implantação privada. A implantação fica restrita a `MYSELF` e executa como `appusiminastp@gmail.com`. Para testar o Web App, abra o link usando essa conta. O envio ao Apps Script, commit/push Git e implantação do Web App são operações distintas. O Google pode solicitar autorização de acesso ao Sheets por conta do escopo declarado.
 
 O Web App abre a planilha fixa pelo ID usando `SpreadsheetApp.openById`, que a documentação do Apps Script associa ao escopo `spreadsheets`. Esse escopo permite leitura e escrita no nível OAuth, mas o aplicativo só chama métodos de leitura (`getDataRange` e `getDisplayValues`); não há função de gravação, edição ou compartilhamento no código.
 

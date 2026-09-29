@@ -8,6 +8,8 @@ A planilha editável **GT-GP - Base de Dados (MVP)** está [neste Google Sheets]
 
 O workbook fornecido tem dados inteiramente simulados. Eles aparecem somente na prévia local `preview.html` e não foram copiados para a planilha editável. O MVP não integra com Microsoft Graph, SharePoint ou outros produtos Microsoft. O painel conectado lê as abas e não grava nelas.
 
+O Apps Script `Dashboard GTGP` é independente e fica na conta `appusiminastp@gmail.com`. Essa conta precisa de acesso de leitor à planilha. A implantação usa `MYSELF`, então o Web App deve ser aberto nessa conta.
+
 ## Prévia local
 
 Abra `preview.html` diretamente no navegador para ver o painel com a amostra simulada, sem Apps Script ou conexão à rede. A prévia identifica a fonte sintética e os botões refletem que a amostra local foi atualizada.
@@ -21,4 +23,4 @@ npm run build
 npm run dev -- --mode preview
 ```
 
-O build atualiza a prévia e `gas/Index.html`. Consulte [o plano e as instruções de operação](docs/IMPLEMENTATION.md). O código do Apps Script está em `gas/`; sincronização e implantação aguardam o Clasp estar autenticado na mesma conta Google que tem acesso à planilha. `.clasp.json`, `.clasprc.json`, `.artifacts/` e credenciais ficam fora do Git.
+O build atualiza a prévia e `gas/Index.html`. Consulte [o plano e as instruções de operação](docs/IMPLEMENTATION.md). O código do Apps Script está em `gas/`; o `.clasp.json` local usa `gas/` como raiz do projeto remoto e é ignorado pelo Git. `.clasprc.json`, `.artifacts/` e credenciais também ficam fora do Git.
