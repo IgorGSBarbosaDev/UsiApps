@@ -1,0 +1,101 @@
+<script>
+  window.GTGPOverviewView = (function () {
+    'use strict';
+    var h = function (value) { return window.GTGPRender.escape(value); };
+    var fmt = function (value) { return window.GTGPRender.number(value); };
+
+    function countFilled(people, key) {
+      return people.filter(function (person) {
+        return window.GTGPRender.value(person, key) !== '';
+      }).length;
+    }
+
+    function grouped(people, key, limit) {
+      var counts = new Map();
+      people.forEach(function (person) {
+        var value = window.GTGPRender.value(person, key) || 'Sem preenchimento';
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      return Array.from(counts.entries())
+        .map(function (entry) { return { label: entry[0], count: entry[1] }; })
+        .sort(function (a, b) { return b.count - a.count || a.label.localeCompare(b.label, 'pt-BR'); })
+        .slice(0, limit || 8);
+    }
+
+    function barChart(rows, color, description) {
+      if (!rows.length) return '<div class="empty-chart">Não há valores preenchidos para mostrar.</div>';
+      var rowHeight = 32;
+      var height = Math.max(130, rows.length * rowHeight + 12);
+      var max = Math.max.apply(null, rows.map(function (row) { return row.count; }).concat([1]));
+      var markup = '<svg class="chart-svg" role="img" aria-label="' + h(description) + '" viewBox="0 0 640 ' + height + '" height="' + height + '" preserveAspectRatio="xMinYMin meet">';
+      markup += '<title>' + h(description) + '</title><desc>Distribuição por categoria com contagens diretas.</desc>';
+      rows.forEach(function (row, index) {
+        var y = index * rowHeight + 5;
+        var label = row.label.length > 26 ? row.label.slice(0, 25) + '…' : row.label;
+        var barWidth = Math.max(2, Math.round((row.count / max) * 372));
+        markup += '<g><title>' + h(row.label + ': ' + fmt(row.count)) + '</title>';
+        markup += '<text x="0" y="' + (y + 17) + '">' + h(label) + '</text>';
+        markup += '<rect class="bar-track" x="180" y="' + y + '" width="384" height="21" rx="3"></rect>';
+        markup += '<rect x="180" y="' + y + '" width="' + barWidth + '" height="21" rx="3" fill="' + color + '"></rect>';
+        markup += '<text class="bar-count" x="' + Math.min(610, 190 + barWidth) + '" y="' + (y + 15) + '">' + fmt(row.count) + '</text></g>';
+      });
+      return markup + '</svg>';
+    }
+
+    function tableRows(people) {
+      if (!people.length) return '<tr><td class="empty-row" colspan="5">A base ainda não tem pessoas para listar.</td></tr>';
+      return people.slice().sort(function (a, b) {
+        return window.GTGPRender.value(a, 'nome').localeCompare(window.GTGPRender.value(b, 'nome'), 'pt-BR');
+      }).slice(0, 6).map(function (person) {
+        var id = h(person.id);
+        var name = window.GTGPRender.value(person, 'nome') || 'Sem nome';
+        return '<tr>' +
+          '<td><button class="person-link" type="button" data-action="open-profile" data-person-id="' + id + '">' + h(name) + '</button></td>' +
+          '<td>' + h(person.matricula || window.GTGPRender.value(person, 'matricula') || '—') + '</td>' +
+          '<td>' + h(window.GTGPRender.value(person, 'programavigente') || '—') + '</td>' +
+          '<td>' + h(window.GTGPRender.value(person, 'enquadre') || '—') + '</td>' +
+          '<td>' + h(window.GTGPRender.value(person, 'localidade') || '—') + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function render(dataset) {
+      var people = dataset.people || [];
+      var quality = dataset.quality || {};
+      var countBase = Number(quality.baseRows) || 0;
+      var noteCount = countFilled(people, 'nota20261');
+      var stageCount = countFilled(people, 'etapa20262');
+      var unmatched = (Number(quality.unmatchedBaseRows) || 0) + (Number(quality.unmatchedAgentRows) || 0);
+      var notePercent = countBase ? Math.round(noteCount * 100 / countBase) : 0;
+      var stagePercent = countBase ? Math.round(stageCount * 100 / countBase) : 0;
+      var stats = '<section class="stats-band" aria-label="Resumo da base">' +
+        '<div class="stat-item"><span class="stat-label">Pessoas na base</span><strong class="stat-value">' + fmt(countBase) + '</strong><span class="stat-note">linhas em Base_Principal</span></div>' +
+        '<div class="stat-item"><span class="stat-label">Nota 2026.1</span><strong class="stat-value">' + fmt(noteCount) + ' / ' + fmt(countBase) + '</strong><span class="stat-note">' + fmt(notePercent) + '% com nota preenchida</span></div>' +
+        '<div class="stat-item"><span class="stat-label">Etapa 2026.2</span><strong class="stat-value">' + fmt(stageCount) + ' / ' + fmt(countBase) + '</strong><span class="stat-note">' + fmt(stagePercent) + '% com etapa preenchida</span></div>' +
+        '<div class="stat-item ' + (unmatched ? 'is-attention' : '') + '"><span class="stat-label">Revisar correspondência</span><strong class="stat-value">' + fmt(unmatched) + '</strong><span class="stat-note">linhas sem par na outra aba</span></div>' +
+      '</section>';
+
+      if (!people.length) {
+        return '<div class="page-stack">' + stats + window.GTGPRender.emptyState('A planilha não tem registros para exibir', 'Os dados simulados carregaram, mas não há pessoas na resposta do backend.') + '</div>';
+      }
+
+      var charts = '<div class="chart-grid">' +
+        '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Distribuição por programa</h2><p class="panel-description">Quantidade de registros por programa vigente.</p></div></header><div class="panel-content">' +
+          barChart(grouped(people, 'programavigente', 7), '#84bd00', 'Distribuição de pessoas por programa') +
+        '</div></section>' +
+        '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Etapas do ciclo 2026.2</h2><p class="panel-description">Etapas preenchidas; valores vazios aparecem como categoria separada.</p></div></header><div class="panel-content">' +
+          barChart(grouped(people, 'etapa20262', 7), '#123d2a', 'Distribuição de pessoas por etapa do ciclo 2026.2') +
+        '</div></section>' +
+      '</div>';
+
+      var sample = '<section class="panel">' +
+        '<header class="panel-header panel-heading-actions"><div><h2 class="panel-title">Registros da base</h2><p class="panel-description">Amostra em ordem alfabética. Abra um perfil para consultar todos os campos disponíveis.</p></div>' +
+        '<button class="button button-secondary panel-action" type="button" data-action="navigate" data-page-target="people">Ver todas as pessoas <span aria-hidden="true">→</span></button></header>' +
+        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Nome</th><th>Matrícula</th><th>Programa</th><th>Enquadre</th><th>Localidade</th></tr></thead><tbody>' + tableRows(people) + '</tbody></table></div>' +
+      '</section>';
+      return '<div class="page-stack">' + stats + charts + sample + '</div>';
+    }
+
+    return { render: render, barChart: barChart, grouped: grouped };
+  })();
+</script>

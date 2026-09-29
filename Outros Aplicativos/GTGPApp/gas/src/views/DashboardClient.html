@@ -1,0 +1,68 @@
+<script>
+  window.GTGPDashboardClient = (function () {
+    'use strict';
+
+    function appError(code, message) {
+      var error = new Error(message || 'O Apps Script retornou uma resposta sem mensagem.');
+      error.code = code || 'SERVER_ERROR';
+      return error;
+    }
+
+    function unwrap(response) {
+      if (!response || typeof response !== 'object' || typeof response.ok !== 'boolean') {
+        throw appError('INVALID_RESPONSE', 'A resposta do Apps Script não segue o formato {ok, data, error}.');
+      }
+      if (!response.ok) {
+        var serverError = response.error || {};
+        throw appError(serverError.code || 'SERVER_ERROR', serverError.message || 'O Apps Script informou uma falha sem detalhes.');
+      }
+      if (!Object.prototype.hasOwnProperty.call(response, 'data')) {
+        throw appError('INVALID_RESPONSE', 'A resposta do Apps Script veio com ok=true, mas sem o campo data.');
+      }
+      return { ok: true, data: response.data };
+    }
+
+    function invoke(name, args) {
+      return new Promise(function (resolve, reject) {
+        var runner = window.google && window.google.script && window.google.script.run;
+        if (!runner || typeof runner.withSuccessHandler !== 'function' || typeof runner.withFailureHandler !== 'function') {
+          reject(appError('APPS_SCRIPT_UNAVAILABLE', 'Não foi possível acessar google.script.run. Abra esta tela pelo HtmlService ou gere a prévia local.'));
+          return;
+        }
+
+        var request = runner
+          .withSuccessHandler(function (response) {
+            try {
+              resolve(unwrap(response));
+            } catch (error) {
+              reject(error);
+            }
+          })
+          .withFailureHandler(function (cause) {
+            var message = cause && cause.message ? cause.message : String(cause || 'A chamada ao Apps Script falhou.');
+            reject(appError(cause && cause.code ? cause.code : 'TRANSPORT_ERROR', message));
+          });
+
+        try {
+          if (typeof request[name] !== 'function') {
+            reject(appError('BACKEND_METHOD_MISSING', 'O método ' + name + ' não está disponível no backend. Confira o Plano 2.'));
+            return;
+          }
+          if (args) request[name](args);
+          else request[name]();
+        } catch (error) {
+          reject(appError(error && error.code ? error.code : 'TRANSPORT_ERROR', error && error.message ? error.message : String(error)));
+        }
+      });
+    }
+
+    return {
+      getDashboardData: function () {
+        return invoke('gtgpGetDashboardData');
+      },
+      exportDashboardXlsx: function (payload) {
+        return invoke('gtgpExportDashboardXlsx', payload);
+      }
+    };
+  })();
+</script>

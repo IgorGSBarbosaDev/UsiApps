@@ -1,0 +1,71 @@
+<script>
+  window.GTGPEvaluationsView = (function () {
+    'use strict';
+    var h = function (value) { return window.GTGPRender.escape(value); };
+    var fmt = function (value) { return window.GTGPRender.number(value); };
+    var colors = ['#84bd00', '#123d2a', '#537d3b', '#9bb583', '#d1a12b', '#678895'];
+    function countFilled(people, key) {
+      return people.filter(function (person) { return window.GTGPRender.value(person, key) !== ''; }).length;
+    }
+    function numericValue(value) {
+      var raw = String(value || '').trim();
+      if (!raw) return null;
+      var normalized = raw.indexOf(',') !== -1 ? raw.replace(/\./g, '').replace(',', '.') : raw;
+      var parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    function grouped(people, key) {
+      var counts = new Map();
+      people.forEach(function (person) {
+        var value = window.GTGPRender.value(person, key);
+        if (value) counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      return Array.from(counts.entries()).map(function (entry) { return { label: entry[0], count: entry[1] }; })
+        .sort(function (a, b) {
+          var aNumber = numericValue(a.label);
+          var bNumber = numericValue(b.label);
+          if (aNumber !== null && bNumber !== null && aNumber !== bNumber) return aNumber - bNumber;
+          return a.label.localeCompare(b.label, 'pt-BR', { numeric: true });
+        });
+    }
+    function average(people, key) {
+      var values = people.map(function (person) { return numericValue(window.GTGPRender.value(person, key)); }).filter(function (value) { return value !== null; });
+      if (!values.length) return null;
+      return values.reduce(function (sum, value) { return sum + value; }, 0) / values.length;
+    }
+    function legend(rows) {
+      return '<div class="chart-legend" aria-label="Legenda">' + rows.map(function (row, index) {
+        return '<div class="legend-item"><span class="legend-dot" style="background:' + colors[index % colors.length] + '" aria-hidden="true"></span><span>' + window.GTGPRender.escape(row.label) + '</span><strong>' + window.GTGPRender.number(row.count) + '</strong></div>';
+      }).join('') + '</div>';
+    }
+    function render(dataset) {
+      var people = dataset.people || [];
+      var score1 = countFilled(people, 'nota20261');
+      var potential1 = countFilled(people, 'potencial20261');
+      var score2 = countFilled(people, 'nota20262');
+      var potential2 = countFilled(people, 'potencial20262');
+      var stage2 = countFilled(people, 'etapa20262');
+      var mean = average(people, 'nota20261');
+      var scoreData = grouped(people, 'nota20261').slice(0, 12);
+      var potentialData = grouped(people, 'potencial20261');
+      var stageData = grouped(people, 'etapa20262').slice(0, 8);
+      var cycleSummary = '<section class="cycle-band" aria-label="Resumo por ciclo">' +
+        '<div class="cycle-block"><span class="cycle-name">Ciclo 2026.1</span><strong class="cycle-value">' + fmt(score1) + ' <small>com nota</small></strong><span class="cycle-note">' + fmt(potential1) + ' com potencial · ' + (mean === null ? 'média indisponível' : 'média ' + h(mean.toLocaleString('pt-BR', { maximumFractionDigits: 2 }))) + '</span></div>' +
+        '<div class="cycle-block"><span class="cycle-name">Ciclo 2026.2</span><strong class="cycle-value">' + fmt(stage2) + ' <small>com etapa</small></strong><span class="cycle-note">' + fmt(score2) + ' com nota · ' + fmt(potential2) + ' com potencial</span></div>' +
+      '</section>';
+      var absenceNote = '<div class="alert subtle-alert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5m0-8h.01"></path></svg><div class="alert-content"><strong class="alert-title">Ausências ficam em branco</strong><span class="alert-message">Os gráficos consideram valores preenchidos. Um campo vazio não equivale a nota zero.</span></div></div>';
+      var scores = '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Notas 2026.1</h2><p class="panel-description">Distribuição dos valores informados.</p></div></header><div class="panel-content">' +
+        (scoreData.length ? window.GTGPOverviewView.barChart(scoreData, '#84bd00', 'Distribuição das notas do ciclo 2026.1') : '<div class="empty-chart">Ainda não há notas preenchidas neste ciclo.</div>') +
+      '</div></section>';
+      var potentials = '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Potencial 2026.1</h2><p class="panel-description">Distribuição das classificações preenchidas.</p></div></header><div class="panel-content">' +
+        (potentialData.length ? window.GTGPOverviewView.barChart(potentialData, '#537d3b', 'Distribuição dos potenciais do ciclo 2026.1') + legend(potentialData) : '<div class="empty-chart">Ainda não há potenciais preenchidos neste ciclo.</div>') +
+      '</div></section>';
+      var stages = '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Etapas 2026.2</h2><p class="panel-description">Quantidade de pessoas em cada etapa preenchida.</p></div></header><div class="panel-content">' +
+        (stageData.length ? window.GTGPOverviewView.barChart(stageData, '#123d2a', 'Distribuição das etapas do ciclo 2026.2') : '<div class="empty-chart">Ainda não há etapas preenchidas neste ciclo.</div>') +
+      '</div></section>';
+      return '<div class="page-stack">' + cycleSummary + absenceNote + '<div class="chart-grid">' + scores + potentials + '</div>' + stages +
+        '<p class="panel-description">A aba TB_Agente também fornece último ciclo, nota, potencial e histórico. Os campos completos estão disponíveis no perfil de cada pessoa.</p></div>';
+    }
+    return { render: render };
+  })();
+</script>

@@ -1,0 +1,100 @@
+<script>
+  window.GTGPPeopleView = (function () {
+    'use strict';
+    var h = function (value) { return window.GTGPRender.escape(value); };
+    var fmt = function (value) { return window.GTGPRender.number(value); };
+    var ALL = '__all__';
+    var BLANK = '__blank__';
+
+    function optionList(values, selected, allLabel, emptyLabel) {
+      var html = '<option value="' + ALL + '">' + h(allLabel) + '</option>';
+      values.forEach(function (value) {
+        html += '<option value="' + h(value) + '"' + (selected === value ? ' selected' : '') + '>' + h(value) + '</option>';
+      });
+      html += '<option value="' + BLANK + '"' + (selected === BLANK ? ' selected' : '') + '>' + h(emptyLabel) + '</option>';
+      return html;
+    }
+
+    function filteredPeople(dataset, state) {
+      var term = window.GTGPRender.fold(state.search || '');
+      return dataset.people.filter(function (person) {
+        var searchText = window.GTGPRender.fold([
+          window.GTGPRender.value(person, 'nome'),
+          person.matricula || window.GTGPRender.value(person, 'matricula'),
+          window.GTGPRender.value(person, 'descricaocargo'),
+          window.GTGPRender.value(person, 'programavigente')
+        ].join(' '));
+        var program = window.GTGPRender.value(person, 'programavigente');
+        var location = window.GTGPRender.value(person, 'localidade');
+        var programMatch = state.program === ALL || (state.program === BLANK ? !program : program === state.program);
+        var locationMatch = state.location === ALL || (state.location === BLANK ? !location : location === state.location);
+        return (!term || searchText.indexOf(term) !== -1) && programMatch && locationMatch;
+      });
+    }
+
+    function rowMarkup(person, fields) {
+      var cells = fields.map(function (field, index) {
+        var value = window.GTGPRender.value(person, field.key);
+        if (field.key === 'matricula' && !value) value = person.matricula || '';
+        if (index === 0) {
+          return '<td><button class="person-link" type="button" data-action="open-profile" data-person-id="' + h(person.id) + '">' + h(value || 'Sem preenchimento') + '</button></td>';
+        }
+        return '<td>' + (value ? h(value) : '<span class="muted-value">—</span>') + '</td>';
+      }).join('');
+      return '<tr>' + cells + '</tr>';
+    }
+
+    function render(dataset, state) {
+      var fields = dataset.fields || [];
+      if (!dataset.people.length) {
+        return '<div class="page-stack">' + window.GTGPRender.emptyState('A planilha não tem pessoas para localizar', 'Quando houver registros, você poderá buscar, filtrar e abrir perfis nesta tela.') + '</div>';
+      }
+      var available = new Map(fields.map(function (field) { return [field.key, field]; }));
+      var selectedKeys = state.columns.filter(function (key) { return available.has(key); });
+      var visibleFields = selectedKeys.map(function (key) { return available.get(key); });
+      var results = filteredPeople(dataset, state);
+      var pages = Math.max(1, Math.ceil(results.length / state.pageSize));
+      var page = Math.min(Math.max(1, state.page), pages);
+      var shown = results.slice((page - 1) * state.pageSize, page * state.pageSize);
+      var programs = Array.from(new Set(dataset.people.map(function (person) { return window.GTGPRender.value(person, 'programavigente'); }).filter(Boolean)))
+        .sort(function (a, b) { return a.localeCompare(b, 'pt-BR', { numeric: true }); });
+      var locations = Array.from(new Set(dataset.people.map(function (person) { return window.GTGPRender.value(person, 'localidade'); }).filter(Boolean)))
+        .sort(function (a, b) { return a.localeCompare(b, 'pt-BR', { numeric: true }); });
+
+      var filters = '<div class="filter-toolbar">' +
+        '<label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6"></circle><path d="m16 16 4.3 4.3"></path></svg><span class="sr-only">Buscar por nome, matrícula ou cargo</span><input id="people-search" type="search" autocomplete="off" value="' + h(state.search || '') + '" placeholder="Buscar nome, matrícula ou cargo" aria-label="Buscar por nome, matrícula ou cargo"></label>' +
+        '<label><span class="sr-only">Filtrar por programa</span><select class="filter-select" id="program-filter" aria-label="Filtrar por programa">' + optionList(programs, state.program, 'Todos os programas', 'Sem programa') + '</select></label>' +
+        '<label><span class="sr-only">Filtrar por localidade</span><select class="filter-select" id="location-filter" aria-label="Filtrar por localidade">' + optionList(locations, state.location, 'Todas as localidades', 'Sem localidade') + '</select></label>' +
+        '<details class="column-picker"' + (state.columnMenuOpen ? ' open' : '') + '><summary aria-label="Selecionar campos visíveis"><span>Colunas</span><span class="column-count">' + fmt(visibleFields.length) + '</span></summary>' +
+          '<div class="column-menu"><p class="column-menu-title">Campos na tabela</p>' +
+            fields.map(function (field) {
+              var checked = selectedKeys.indexOf(field.key) !== -1 ? ' checked' : '';
+              return '<label class="column-option"><input type="checkbox" value="' + h(field.key) + '" data-action="toggle-column"' + checked + '><span>' + h(field.label) + '</span></label>';
+            }).join('') +
+          '</div></details>' +
+      '</div>';
+
+      var headers = visibleFields.length ? visibleFields.map(function (field) { return '<th scope="col">' + h(field.label) + '</th>'; }).join('') : '<th scope="col">Campos</th>';
+      var rows = visibleFields.length
+        ? shown.map(function (person) { return rowMarkup(person, visibleFields); }).join('')
+        : '<tr><td class="empty-row">Selecione ao menos um campo para mostrar na tabela.</td></tr>';
+      if (visibleFields.length && !shown.length) {
+        rows = '<tr><td class="empty-row" colspan="' + visibleFields.length + '">Nenhuma pessoa corresponde aos filtros. Limpe a busca ou selecione outro filtro.</td></tr>';
+      }
+      var start = results.length ? (page - 1) * state.pageSize + 1 : 0;
+      var end = Math.min(page * state.pageSize, results.length);
+      var previousDisabled = page <= 1 ? ' disabled' : '';
+      var nextDisabled = page >= pages ? ' disabled' : '';
+
+      return '<div class="page-stack">' + filters +
+        '<section class="panel"><div class="table-summary"><span><strong>' + fmt(results.length) + '</strong> ' + (results.length === 1 ? 'pessoa' : 'pessoas') + '</span><span>' + fmt(visibleFields.length) + ' campos visíveis · ' + fmt(fields.length) + ' disponíveis</span></div>' +
+        '<div class="table-wrap"><table class="data-table people-table"><thead><tr>' + headers + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="pagination-row"><span>Mostrando ' + fmt(start) + '–' + fmt(end) + ' de ' + fmt(results.length) + '</span>' +
+          '<div class="pagination-controls"><button class="button button-secondary" type="button" data-action="previous-page"' + previousDisabled + '>Anterior</button>' +
+          '<span class="page-count">' + fmt(page) + ' / ' + fmt(pages) + '</span>' +
+          '<button class="button button-secondary" type="button" data-action="next-page"' + nextDisabled + '>Próxima</button></div></div></section></div>';
+    }
+
+    return { render: render, filteredPeople: filteredPeople, allFilter: ALL, blankFilter: BLANK };
+  })();
+</script>
