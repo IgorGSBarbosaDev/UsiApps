@@ -8,7 +8,7 @@ A planilha editável **GT-GP - Base de Dados (MVP)** está [neste Google Sheets]
 
 O workbook fornecido tem dados inteiramente simulados. Eles aparecem somente na prévia local `preview.html` e não foram copiados para a planilha editável. O MVP não integra com Microsoft Graph, SharePoint ou outros produtos Microsoft. O painel conectado lê as abas e não grava nelas.
 
-O Apps Script `Dashboard GTGP` é independente e fica na conta `appusiminastp@gmail.com`. Essa conta precisa de acesso de leitor à planilha. A implantação usa `MYSELF`, então o Web App deve ser aberto nessa conta.
+O Apps Script `Dashboard GTGP` é independente e fica na conta `appusiminastp@gmail.com`. Essa conta precisa de acesso de leitor à planilha. Durante os testes, o Web App permite acesso a qualquer conta Google conectada (`ANYONE`) e executa como `appusiminastp`; qualquer pessoa conectada que obtenha o link pode ver os dados carregados. Mantenha somente dados simulados enquanto estiver assim e volte para `MYSELF` antes de usar dados reais.
 
 ## Prévia local
 
