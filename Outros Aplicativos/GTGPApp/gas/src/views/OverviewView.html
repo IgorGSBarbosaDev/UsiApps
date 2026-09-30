@@ -4,10 +4,33 @@
     var h = function (value) { return window.GTGPRender.escape(value); };
     var fmt = function (value) { return window.GTGPRender.number(value); };
 
-    function countFilled(people, key) {
-      return people.filter(function (person) {
-        return window.GTGPRender.value(person, key) !== '';
-      }).length;
+    function normalized(value) {
+      return String(value == null ? '' : value)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .trim().replace(/\s+/g, ' ').toLocaleUpperCase('pt-BR');
+    }
+
+    function potentialFor(person) {
+      var currentPotential = window.GTGPRender.value(person, 'potencial20261');
+      if (currentPotential) return currentPotential;
+
+      var latestPotential = window.GTGPRender.value(person, 'ultimopotencial');
+      if (latestPotential) return latestPotential;
+
+      var values = person.values || {};
+      var potentialKeys = Object.keys(values).filter(function (key) {
+        return /^potencial\d{5}$/.test(key) && String(values[key] || '').trim();
+      }).sort(function (left, right) {
+        return right.localeCompare(left);
+      });
+      if (potentialKeys.length) return String(values[potentialKeys[0]]).trim();
+
+      var history = window.GTGPRender.value(person, 'historicoavaliacoes');
+      var match;
+      var lastPotential = '';
+      var pattern = /potencial\s*:\s*([^|;\n\r]+)/gi;
+      while ((match = pattern.exec(history)) !== null) lastPotential = match[1].trim();
+      return lastPotential;
     }
 
     function grouped(people, key, limit) {
@@ -16,84 +39,146 @@
         var value = window.GTGPRender.value(person, key) || 'Sem preenchimento';
         counts.set(value, (counts.get(value) || 0) + 1);
       });
-      return Array.from(counts.entries())
+      var rows = Array.from(counts.entries())
         .map(function (entry) { return { label: entry[0], count: entry[1] }; })
-        .sort(function (a, b) { return b.count - a.count || a.label.localeCompare(b.label, 'pt-BR'); })
-        .slice(0, limit || 8);
+        .sort(function (a, b) { return b.count - a.count || a.label.localeCompare(b.label, 'pt-BR'); });
+      return limit === null ? rows : rows.slice(0, limit || 8);
     }
 
-    function barChart(rows, color, description) {
+    function groupedBy(people, getValue) {
+      var counts = new Map();
+      people.forEach(function (person) {
+        var value = getValue(person) || 'Sem preenchimento';
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      return Array.from(counts.entries())
+        .map(function (entry) { return { label: entry[0], count: entry[1] }; })
+        .sort(function (a, b) { return b.count - a.count || a.label.localeCompare(b.label, 'pt-BR'); });
+    }
+
+    function barChart(rows, color, description, options) {
       if (!rows.length) return '<div class="empty-chart">Não há valores preenchidos para mostrar.</div>';
+      var settings = options || {};
       var rowHeight = 32;
       var height = Math.max(130, rows.length * rowHeight + 12);
+      var labelLimit = settings.labelLimit || 26;
+      var trackX = settings.trackX || 180;
+      var trackWidth = settings.trackWidth || 384;
+      var maxBarWidth = trackWidth - 12;
+      var chartWidth = Math.max(640, trackX + trackWidth + 76);
       var max = Math.max.apply(null, rows.map(function (row) { return row.count; }).concat([1]));
-      var markup = '<svg class="chart-svg" role="img" aria-label="' + h(description) + '" viewBox="0 0 640 ' + height + '" height="' + height + '" preserveAspectRatio="xMinYMin meet">';
+      var markup = '<svg class="chart-svg" role="img" aria-label="' + h(description) + '" viewBox="0 0 ' + chartWidth + ' ' + height + '" height="' + height + '" preserveAspectRatio="xMinYMin meet">';
       markup += '<title>' + h(description) + '</title><desc>Distribuição por categoria com contagens diretas.</desc>';
       rows.forEach(function (row, index) {
         var y = index * rowHeight + 5;
-        var label = row.label.length > 26 ? row.label.slice(0, 25) + '…' : row.label;
-        var barWidth = Math.max(2, Math.round((row.count / max) * 372));
+        var label = row.label.length > labelLimit ? row.label.slice(0, labelLimit - 1) + '…' : row.label;
+        var barWidth = Math.max(2, Math.round((row.count / max) * maxBarWidth));
         markup += '<g><title>' + h(row.label + ': ' + fmt(row.count)) + '</title>';
         markup += '<text x="0" y="' + (y + 17) + '">' + h(label) + '</text>';
-        markup += '<rect class="bar-track" x="180" y="' + y + '" width="384" height="21" rx="3"></rect>';
-        markup += '<rect x="180" y="' + y + '" width="' + barWidth + '" height="21" rx="3" fill="' + color + '"></rect>';
-        markup += '<text class="bar-count" x="' + Math.min(610, 190 + barWidth) + '" y="' + (y + 15) + '">' + fmt(row.count) + '</text></g>';
+        markup += '<rect class="bar-track" x="' + trackX + '" y="' + y + '" width="' + trackWidth + '" height="21" rx="3"></rect>';
+        markup += '<rect x="' + trackX + '" y="' + y + '" width="' + barWidth + '" height="21" rx="3" fill="' + color + '"></rect>';
+        markup += '<text class="bar-count" x="' + Math.min(chartWidth - 30, trackX + 10 + barWidth) + '" y="' + (y + 15) + '">' + fmt(row.count) + '</text></g>';
       });
       return markup + '</svg>';
     }
 
-    function tableRows(people) {
-      if (!people.length) return '<tr><td class="empty-row" colspan="5">A base ainda não tem pessoas para listar.</td></tr>';
-      return people.slice().sort(function (a, b) {
-        return window.GTGPRender.value(a, 'nome').localeCompare(window.GTGPRender.value(b, 'nome'), 'pt-BR');
-      }).slice(0, 6).map(function (person) {
-        var id = h(person.id);
-        var name = window.GTGPRender.value(person, 'nome') || 'Sem nome';
-        return '<tr>' +
-          '<td><button class="person-link" type="button" data-action="open-profile" data-person-id="' + id + '">' + h(name) + '</button></td>' +
-          '<td>' + h(person.matricula || window.GTGPRender.value(person, 'matricula') || '—') + '</td>' +
-          '<td>' + h(window.GTGPRender.value(person, 'programavigente') || '—') + '</td>' +
-          '<td>' + h(window.GTGPRender.value(person, 'enquadre') || '—') + '</td>' +
-          '<td>' + h(window.GTGPRender.value(person, 'localidade') || '—') + '</td>' +
-        '</tr>';
-      }).join('');
+    function hasField(dataset, key) {
+      return (dataset.fields || []).some(function (field) { return field.key === key; });
     }
 
-    function render(dataset) {
+    function finalCeoLevels(dataset) {
+      var levels = [];
+      for (var level = 1; level <= 7; level += 1) {
+        if (hasField(dataset, 'areafimceo' + level) || hasField(dataset, 'descricaoceo' + level)) {
+          levels.push(level);
+        }
+      }
+      return levels;
+    }
+
+    function finalCeoValue(person, level) {
+      return window.GTGPRender.value(person, 'areafimceo' + level) ||
+        window.GTGPRender.value(person, 'descricaoceo' + level);
+    }
+
+    function vpValue(person) {
+      var ceo1 = finalCeoValue(person, 1);
+      var ceo3 = finalCeoValue(person, 3);
+      var ceo4 = finalCeoValue(person, 4);
+      if (ceo1 && normalized(ceo1) !== 'SIDERURGIA') return ceo1;
+      if (/\bCEO\s*[-–—]?\s*PRESIDENCY\b/.test(normalized(ceo3))) return ceo4 || ceo3;
+      return ceo3 || ceo4 || ceo1;
+    }
+
+    function percentage(count, total) {
+      return total ? fmt(Math.round(count * 100 / total)) + '%' : '—';
+    }
+
+    function statistic(label, value, note) {
+      return '<div class="stat-item"><span class="stat-label">' + h(label) + '</span><strong class="stat-value">' + h(value) + '</strong><span class="stat-note">' + h(note) + '</span></div>';
+    }
+
+    function render(dataset, selectedCeoView) {
       var people = dataset.people || [];
-      var quality = dataset.quality || {};
-      var countBase = Number(quality.baseRows) || 0;
-      var noteCount = countFilled(people, 'nota20261');
-      var stageCount = countFilled(people, 'etapa20262');
-      var unmatched = (Number(quality.unmatchedBaseRows) || 0) + (Number(quality.unmatchedAgentRows) || 0);
-      var notePercent = countBase ? Math.round(noteCount * 100 / countBase) : 0;
-      var stagePercent = countBase ? Math.round(stageCount * 100 / countBase) : 0;
+      var countBase = Number(dataset.quality && dataset.quality.rowCount) || people.length;
+      var total = people.length;
+      var potentialCount = 0;
+      var apCount = 0;
+      var womenCount = 0;
+      var industrialCount = 0;
+      var poolRhCount = 0;
+
+      people.forEach(function (person) {
+        var potential = potentialFor(person);
+        if (potential) potentialCount += 1;
+        if (normalized(potential) === 'AP') apCount += 1;
+        var sex = normalized(window.GTGPRender.value(person, 'sexo'));
+        if (sex === 'F' || sex === 'FEMININO' || sex === 'MULHER') womenCount += 1;
+        if (normalized(window.GTGPRender.value(person, 'industrialstaff')) === 'INDUSTRIAL') industrialCount += 1;
+        if (normalized(window.GTGPRender.value(person, 'statustrainee')) === 'POOL RH') poolRhCount += 1;
+      });
+
+      var staffCount = Math.max(0, total - industrialCount);
       var stats = '<section class="stats-band" aria-label="Resumo da base">' +
-        '<div class="stat-item"><span class="stat-label">Pessoas na base</span><strong class="stat-value">' + fmt(countBase) + '</strong><span class="stat-note">linhas em Base_Principal</span></div>' +
-        '<div class="stat-item"><span class="stat-label">Nota 2026.1</span><strong class="stat-value">' + fmt(noteCount) + ' / ' + fmt(countBase) + '</strong><span class="stat-note">' + fmt(notePercent) + '% com nota preenchida</span></div>' +
-        '<div class="stat-item"><span class="stat-label">Etapa 2026.2</span><strong class="stat-value">' + fmt(stageCount) + ' / ' + fmt(countBase) + '</strong><span class="stat-note">' + fmt(stagePercent) + '% com etapa preenchida</span></div>' +
-        '<div class="stat-item ' + (unmatched ? 'is-attention' : '') + '"><span class="stat-label">Revisar correspondência</span><strong class="stat-value">' + fmt(unmatched) + '</strong><span class="stat-note">linhas sem par na outra aba</span></div>' +
+        statistic('Ativos', fmt(countBase), 'pessoas na planilha') +
+        statistic('APs', percentage(apCount, total), fmt(apCount) + ' com AP · ' + fmt(total - potentialCount) + ' sem avaliação registrada') +
+        statistic('Mulheres', percentage(womenCount, total), fmt(womenCount) + ' de ' + fmt(total) + ' pessoas') +
+        statistic('Industrial', percentage(industrialCount, total), 'Staff: ' + percentage(staffCount, total) + ' (' + fmt(staffCount) + ' pessoas)') +
+        statistic('Pool RH', percentage(poolRhCount, total), fmt(poolRhCount) + ' de ' + fmt(total) + ' pessoas') +
       '</section>';
 
       if (!people.length) {
-        return '<div class="page-stack">' + stats + window.GTGPRender.emptyState('A planilha não tem registros para exibir', 'Os dados simulados carregaram, mas não há pessoas na resposta do backend.') + '</div>';
+        return '<div class="page-stack">' + stats + window.GTGPRender.emptyState('A planilha não tem registros para exibir', 'A primeira aba foi importada, mas não há pessoas na resposta do backend.') + '</div>';
       }
 
+      var ceoLevels = finalCeoLevels(dataset);
+      var options = [{ value: 'vp', label: 'VP' }].concat(ceoLevels.map(function (level) {
+        return { value: 'ceo-fim-' + level, label: 'CEO Fim ' + level };
+      }));
+      var activeView = options.some(function (option) { return option.value === selectedCeoView; }) ? selectedCeoView : 'vp';
+      var selectedLevel = activeView.indexOf('ceo-fim-') === 0 ? Number(activeView.slice('ceo-fim-'.length)) : 0;
+      var ceoRows = activeView === 'vp'
+        ? groupedBy(people, vpValue)
+        : groupedBy(people, function (person) { return finalCeoValue(person, selectedLevel); });
+      var chartTitle = activeView === 'vp' ? 'Distribuição por VP' : 'Distribuição por CEO Fim ' + selectedLevel;
+      var chartDescription = activeView === 'vp'
+        ? 'Pessoas agrupadas por VP com base na estrutura final.'
+        : 'Pessoas agrupadas por CEO Fim ' + selectedLevel + '.';
+      var optionsHtml = options.map(function (option) {
+        return '<option value="' + h(option.value) + '"' + (option.value === activeView ? ' selected' : '') + '>' + h(option.label) + '</option>';
+      }).join('');
+
       var charts = '<div class="chart-grid">' +
-        '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Distribuição por programa</h2><p class="panel-description">Quantidade de registros por programa vigente.</p></div></header><div class="panel-content">' +
+        '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Distribuição por programa</h2><p class="panel-description">Quantidade de pessoas por programa vigente.</p></div></header><div class="panel-content">' +
           barChart(grouped(people, 'programavigente', 7), '#84bd00', 'Distribuição de pessoas por programa') +
         '</div></section>' +
-        '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Etapas do ciclo 2026.2</h2><p class="panel-description">Etapas preenchidas; valores vazios aparecem como categoria separada.</p></div></header><div class="panel-content">' +
-          barChart(grouped(people, 'etapa20262', 7), '#123d2a', 'Distribuição de pessoas por etapa do ciclo 2026.2') +
+        '<section class="panel"><header class="panel-header overview-panel-header"><div><h2 class="panel-title">' + h(chartTitle) + '</h2><p class="panel-description">' + h(chartDescription) + '</p></div>' +
+          '<label class="overview-filter"><span class="overview-filter-label">Agrupar por</span><select id="overview-ceo-filter" class="filter-select" aria-label="Agrupar a distribuição pela estrutura final">' + optionsHtml + '</select></label></header><div class="panel-content">' +
+          barChart(ceoRows, '#123d2a', chartDescription, { labelLimit: 38, trackX: 242, trackWidth: 300 }) +
         '</div></section>' +
       '</div>';
 
-      var sample = '<section class="panel">' +
-        '<header class="panel-header panel-heading-actions"><div><h2 class="panel-title">Registros da base</h2><p class="panel-description">Amostra em ordem alfabética. Abra um perfil para consultar todos os campos disponíveis.</p></div>' +
-        '<button class="button button-secondary panel-action" type="button" data-action="navigate" data-page-target="people">Ver todas as pessoas <span aria-hidden="true">→</span></button></header>' +
-        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Nome</th><th>Matrícula</th><th>Programa</th><th>Enquadre</th><th>Localidade</th></tr></thead><tbody>' + tableRows(people) + '</tbody></table></div>' +
-      '</section>';
-      return '<div class="page-stack">' + stats + charts + sample + '</div>';
+      return '<div class="page-stack">' + stats + charts + '</div>';
     }
 
     return { render: render, barChart: barChart, grouped: grouped };

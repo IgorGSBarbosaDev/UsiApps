@@ -8,11 +8,7 @@ const require = createRequire(import.meta.url);
 const XLSX = require("xlsx");
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const requiredSheets = ["Base_Principal", "TB_Agente"];
-const requiredHeaders = {
-  Base_Principal: ["matricula", "nome"],
-  TB_Agente: ["matricula"],
-};
+const requiredHeaders = ["matricula", "nome"];
 
 function normalizeKey(value) {
   return String(value ?? "")
@@ -60,7 +56,7 @@ function readSheet(workbook, name) {
     seenKeys.add(header.key);
   }
 
-  const missingHeaders = requiredHeaders[name].filter((key) => !seenKeys.has(key));
+  const missingHeaders = requiredHeaders.filter((key) => !seenKeys.has(key));
   if (missingHeaders.length) {
     incompatible(`a aba "${name}" precisa conter os cabeçalhos obrigatórios: ${missingHeaders.join(", ")}.`);
   }
@@ -93,6 +89,11 @@ function main() {
     );
   }
 
+  const simulationFlag = process.env.GTGP_WORKBOOK_SIMULATED?.trim().toLowerCase();
+  if (simulationFlag && simulationFlag !== "true" && simulationFlag !== "false") {
+    incompatible("GTGP_WORKBOOK_SIMULATED precisa ser true ou false.");
+  }
+
   const sourcePath = resolve(configuredSourcePath);
   let sourceBytes;
   try {
@@ -102,16 +103,14 @@ function main() {
   }
 
   const workbook = XLSX.read(sourceBytes, { type: "buffer", cellDates: false });
-  const missingSheets = requiredSheets.filter((name) => !workbook.SheetNames.includes(name));
-  if (missingSheets.length) {
-    incompatible(`faltam as abas obrigatórias: ${missingSheets.join(", ")}.`);
-  }
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) incompatible("o workbook não contém uma primeira aba para importar.");
 
   const data = {
     fileName: basename(sourcePath),
     hash: createHash("sha256").update(sourceBytes).digest("hex"),
-    simulated: true,
-    sheets: requiredSheets.map((name) => readSheet(workbook, name)),
+    simulated: simulationFlag === "true",
+    sheets: [readSheet(workbook, firstSheetName)],
   };
 
   const generatedHeader = "// AUTO-GERADO por scripts/import-workbook.mjs. Não edite manualmente.\n";

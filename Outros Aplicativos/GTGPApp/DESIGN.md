@@ -1,6 +1,6 @@
 ---
 name: "GT/GP · Painel de gestão"
-description: "Painel de consulta da base simulada de programas GT/GP."
+description: "Painel de consulta dos dados GT/GP importados da primeira aba de um workbook."
 colors:
   deep-green: "#123d2a"
   usiminas-lime: "#84bd00"
@@ -26,7 +26,7 @@ rounded:
 
 ## Overview
 
-O painel transforma o snapshot simulado gerado a partir de um workbook externo em telas de consulta. A identidade visual usa navegação verde escura, acentos Usiminas e superfícies claras. A hierarquia prioriza a visão geral, a busca de pessoas, as avaliações e as verificações de qualidade.
+O painel transforma o snapshot gerado a partir da primeira aba de um workbook externo em telas de consulta. A identidade visual usa navegação verde escura, acentos Usiminas e superfícies claras. A hierarquia prioriza a visão geral, a busca de pessoas, as avaliações e as verificações de qualidade.
 
 ## Colors and typography
 
@@ -36,24 +36,24 @@ A interface usa a pilha de fontes do sistema, sem fontes externas. Títulos de p
 
 ## Layout
 
-O shell desktop tem navegação lateral, barra superior e área principal limitada em largura. A visão geral começa com indicadores em grade, segue com distribuições e termina com uma amostra de registros. Em telas estreitas, indicadores e gráficos se reorganizam; tabelas largas mantêm rolagem horizontal para preservar campos.
+O shell desktop tem navegação lateral, barra superior e área principal limitada em largura. A visão geral começa com cinco indicadores em grade, segue com distribuição por programa e por VP, com filtro para os níveis CEO Fim disponíveis. Em telas estreitas, indicadores e gráficos se reorganizam; tabelas largas mantêm rolagem horizontal para preservar campos.
 
 ## Surfaces and components
 
-- **Navegação:** marca GT/GP, acesso às quatro telas e indicação do nome/versão da fonte simulada.
+- **Navegação:** marca GT/GP, acesso às quatro telas e indicação do nome/versão da fonte importada.
 - **Barra superior:** contexto da tela, estado dos dados, atualização do snapshot e exportação XLSX.
-- **Visão geral:** indicadores, distribuições em SVG, resumos e amostra de pessoas.
+- **Visão geral:** cinco indicadores, distribuição em SVG por programa e por CEO Fim/VP; o filtro organizacional usa somente a estrutura final.
 - **Pessoas:** busca, filtros, seleção de colunas, tabela paginada e acesso ao perfil completo.
 - **Avaliações:** resumo de cobertura e barras para valores preenchidos. Ausência nunca é nota zero.
-- **Qualidade:** contagens de matrícula, duplicidades, correspondências e nomes, com estados compreensíveis.
+- **Qualidade:** contagens de matrícula, duplicidades e nomes vazios, com estados compreensíveis.
 - **Perfil:** diálogo com os campos disponíveis agrupados para leitura.
 - **Estados:** carregamento, erro, fonte vazia e resultados de filtro vazios devem explicar o estado e oferecer a próxima ação aplicável.
 
 ## Do's and Don'ts
 
-- Não versione o workbook de origem; forneça-o fora do repositório por `GTGP_WORKBOOK_PATH` ao regenerar o snapshot simulado.
-- Preserve todos os campos e trate `Matricula` como texto ao unir as abas `Base_Principal` e `TB_Agente`.
+- Não versione o workbook de origem; forneça-o fora do repositório por `GTGP_WORKBOOK_PATH` ao regenerar o snapshot.
+- Considere apenas a primeira aba e preserve todos os seus campos; trate `Matricula` como texto.
 - Mantenha valores ausentes em branco e preserve a natureza somente leitura do painel.
-- Identifique a demonstração como simulada na interface e na prévia local.
-- Não apresente edição de registros no painel nem introduza dados reais no snapshot de demonstração.
+- Identifique uma demonstração como simulada somente quando `GTGP_WORKBOOK_SIMULATED=true` for informado.
+- Não apresente edição de registros no painel.
 - Preserve texto curto, contraste entre títulos e metadados e largura legível das tabelas.

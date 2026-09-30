@@ -1,18 +1,10 @@
 function gtgpBuildDashboardData_() {
   var workbook = gtgpReadWorkbook_();
   var baseRows = gtgpGetNonEmptyRows_(workbook.baseSheet);
-  var agentRows = gtgpGetNonEmptyRows_(workbook.agentSheet);
-  var baseIds = gtgpIdSet_(baseRows);
-  var agentIds = gtgpIdSet_(agentRows);
   var quality = {
-    baseRows: baseRows.length,
-    agentRows: agentRows.length,
-    duplicateBaseIds: gtgpDuplicateCount_(baseRows),
-    duplicateAgentIds: gtgpDuplicateCount_(agentRows),
-    missingBaseIds: gtgpMissingIdCount_(baseRows),
-    missingAgentIds: gtgpMissingIdCount_(agentRows),
-    unmatchedBaseRows: gtgpUnmatchedCount_(baseRows, agentIds),
-    unmatchedAgentRows: gtgpUnmatchedCount_(agentRows, baseIds),
+    rowCount: baseRows.length,
+    duplicateIds: gtgpDuplicateCount_(baseRows),
+    missingIds: gtgpMissingIdCount_(baseRows),
     blankNames: baseRows.filter(function (row) {
       return !gtgpText_(row.values[gtgpConfig.nameKey]);
     }).length
@@ -21,11 +13,12 @@ function gtgpBuildDashboardData_() {
   return {
     source: {
       fileName: workbook.fileName,
+      sheetName: workbook.baseSheet.name,
       version: workbook.version,
       simulated: workbook.simulated
     },
-    fields: gtgpBuildFields_(workbook.baseSheet, workbook.agentSheet),
-    people: gtgpBuildPeople_(baseRows, agentRows),
+    fields: gtgpBuildFields_(workbook.baseSheet),
+    people: gtgpBuildPeople_(baseRows, workbook.baseSheet.name),
     quality: quality
   };
 }
@@ -46,15 +39,6 @@ function gtgpGetNonEmptyRows_(sheet) {
     });
 }
 
-function gtgpIdSet_(rows) {
-  var ids = new Set();
-  rows.forEach(function (row) {
-    var id = gtgpNormalizeId_(row.values[gtgpConfig.joinKey]);
-    if (id) ids.add(id);
-  });
-  return ids;
-}
-
 function gtgpDuplicateCount_(rows) {
   var seen = new Set();
   var duplicates = 0;
@@ -73,86 +57,40 @@ function gtgpMissingIdCount_(rows) {
   }).length;
 }
 
-function gtgpUnmatchedCount_(rows, otherIds) {
-  return rows.filter(function (row) {
-    var id = gtgpNormalizeId_(row.values[gtgpConfig.joinKey]);
-    return Boolean(id) && !otherIds.has(id);
-  }).length;
-}
-
-function gtgpBuildFields_(baseSheet, agentSheet) {
+function gtgpBuildFields_(baseSheet) {
   var fieldsByKey = new Map();
-  [baseSheet, agentSheet].forEach(function (sheet) {
-    sheet.headers.forEach(function (header) {
-      var field = fieldsByKey.get(header.key);
-      if (!field) {
-        field = {
-          key: header.key,
-          label: gtgpHasOwn_(gtgpConfig.fieldLabels, header.key)
-            ? gtgpConfig.fieldLabels[header.key]
-            : gtgpText_(header.original),
-          source: []
-        };
-        fieldsByKey.set(header.key, field);
-      }
-      if (field.source.indexOf(sheet.name) < 0) field.source.push(sheet.name);
+  baseSheet.headers.forEach(function (header) {
+    fieldsByKey.set(header.key, {
+      key: header.key,
+      label: gtgpHasOwn_(gtgpConfig.fieldLabels, header.key)
+        ? gtgpConfig.fieldLabels[header.key]
+        : gtgpText_(header.original),
+      source: [baseSheet.name]
     });
   });
   return Array.from(fieldsByKey.values());
 }
 
-function gtgpBuildPeople_(baseRows, agentRows) {
+function gtgpBuildPeople_(baseRows, sourceSheetName) {
   var records = [];
-  var firstBaseById = new Map();
+  var seenIds = new Set();
   var serial = 0;
 
   baseRows.forEach(function (row) {
     serial += 1;
     var matricula = gtgpText_(row.values[gtgpConfig.joinKey]);
     var normalizedId = gtgpNormalizeId_(matricula);
-    var duplicate = Boolean(normalizedId && firstBaseById.has(normalizedId));
+    var duplicate = Boolean(normalizedId && seenIds.has(normalizedId));
     var id = normalizedId && !duplicate
       ? 'id:' + normalizedId
       : 'base:' + (row.sourceIndex + 2) + ':' + serial;
-    var person = {
+    records.push({
       id: id,
       matricula: matricula,
       values: Object.assign({}, row.values),
-      sources: [gtgpConfig.baseSheetName]
-    };
-    records.push(person);
-    if (normalizedId && !firstBaseById.has(normalizedId)) {
-      firstBaseById.set(normalizedId, person);
-    }
-  });
-
-  agentRows.forEach(function (row) {
-    var matricula = gtgpText_(row.values[gtgpConfig.joinKey]);
-    var normalizedId = gtgpNormalizeId_(matricula);
-    var target = normalizedId ? firstBaseById.get(normalizedId) : null;
-
-    if (!target) {
-      serial += 1;
-      target = {
-        id: normalizedId
-          ? 'agent:' + normalizedId + ':' + (row.sourceIndex + 2)
-          : 'agent:' + (row.sourceIndex + 2) + ':' + serial,
-        matricula: matricula,
-        values: {},
-        sources: []
-      };
-      records.push(target);
-    }
-
-    Object.keys(row.values).forEach(function (key) {
-      var value = row.values[key];
-      if (value !== '' && (target.values[key] === undefined || target.values[key] === '')) {
-        target.values[key] = value;
-      }
+      sources: [sourceSheetName]
     });
-    if (target.sources.indexOf(gtgpConfig.agentSheetName) < 0) {
-      target.sources.push(gtgpConfig.agentSheetName);
-    }
+    if (normalizedId) seenIds.add(normalizedId);
   });
 
   records.sort(function (left, right) {

@@ -64,7 +64,7 @@
         (stageData.length ? window.GTGPOverviewView.barChart(stageData, '#123d2a', 'Distribuição das etapas do ciclo 2026.2') : '<div class="empty-chart">Ainda não há etapas preenchidas neste ciclo.</div>') +
       '</div></section>';
       return '<div class="page-stack">' + cycleSummary + absenceNote + '<div class="chart-grid">' + scores + potentials + '</div>' + stages +
-        '<p class="panel-description">A aba TB_Agente também fornece último ciclo, nota, potencial e histórico. Os campos completos estão disponíveis no perfil de cada pessoa.</p></div>';
+        '<p class="panel-description">Esta tela considera somente os campos de avaliação presentes na primeira aba do workbook.</p></div>';
     }
     return { render: render };
   })();

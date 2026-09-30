@@ -64,7 +64,7 @@ function previewAdapter(data) {
     "        && payload.ids.every(function (id) { return validIds.has(id); })\n" +
     "        && payload.fields.every(function (key) { return validFields.has(key); });\n" +
     "      if (!valid) {\n" +
-    "        if (runner.success) runner.success({ ok: false, error: { code: 'INVALID_EXPORT_SELECTION', message: 'IDs ou campos da exportação não pertencem aos dados simulados.' } });\n" +
+    "        if (runner.success) runner.success({ ok: false, error: { code: 'INVALID_EXPORT_SELECTION', message: 'IDs ou campos da exportação não pertencem aos dados carregados.' } });\n" +
     "        return;\n" +
     "      }\n" +
     "      if (runner.success) runner.success({ ok: true, data: { accepted: true } });\n" +
@@ -81,7 +81,7 @@ try {
 } catch (error) {
   throw new Error("Não foi possível ler " + path.relative(projectRoot, workbookPath) + ". Execute primeiro o importador do Plano 1.", { cause: error });
 }
-if (workbook.simulated !== true) throw new Error("A prévia local exige simulated=true no artefato de origem.");
+if (typeof workbook.simulated !== "boolean") throw new Error("O artefato de origem precisa informar se os dados são simulados.");
 
 let html = await readFile(path.join(viewsDir, "Index.html"), "utf8");
 html = html.replace(/^[\t ]*<\?\s*var include = gtgpInclude;\s*\?>[\t ]*(?:\r?\n|$)/m, "");

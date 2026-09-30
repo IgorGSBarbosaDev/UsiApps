@@ -6,7 +6,7 @@
       overview: { title: 'Visão geral', description: 'Indicadores e distribuição da base de programas GT/GP.' },
       people: { title: 'Pessoas', description: 'Busque, filtre e consulte os campos disponíveis por pessoa.' },
       evaluations: { title: 'Avaliações', description: 'Cobertura e distribuição dos valores informados por ciclo.' },
-      quality: { title: 'Qualidade dos dados', description: 'Chaves ausentes, duplicadas e registros sem correspondência.' }
+      quality: { title: 'Qualidade dos dados', description: 'Chaves ausentes, duplicadas e campos sem preenchimento.' }
     };
     var defaultColumns = ['nome', 'matricula', 'programavigente', 'enquadre', 'localidade', 'nota20261', 'potencial20261', 'etapa20262'];
     var state = {
@@ -22,7 +22,8 @@
       columns: [],
       pageNumber: 1,
       pageSize: 25,
-      columnMenuOpen: false
+      columnMenuOpen: false,
+      overviewCeoView: 'vp'
     };
 
     function escape(value) {
@@ -37,14 +38,14 @@
     function groupFor(field) {
       var key = field.key;
       if (/^(nota|potencial|etapa|historicoavaliacoes|ultimociclo|ultimanota|ultimopotencial)/.test(key)) return 'Avaliações';
-      if (/^(curso|instituicao|exestagiario)/.test(key)) return 'Formação';
-      if (/^(descricaoceo|centrocusto|descricaonivel|nivel2|areafim|vagamapeada|industrialstaff|rotacao)/.test(key)) return 'Estrutura e trajetória';
+      if (/^(curso|instituicao|exestagiario|previsaodeformatura)/.test(key)) return 'Formação';
+      if (/^(descricaoceo|ceo\d+atual|centrocusto|descricaonivel|nivel2|areafim|vagamapeada|industrialstaff|rotacao|detalhevaga)/.test(key)) return 'Estrutura e trajetória';
       return 'Cadastro';
     }
     function emptyState(title, message) {
       var source = state.dataset && state.dataset.source;
       var fileName = source && source.fileName ? source.fileName : 'Base GTGP.xlsx';
-      var note = source && source.simulated ? ' · dados simulados' : '';
+      var note = source ? (source.simulated ? ' · dados simulados' : ' · primeira aba importada') : '';
       return '<section class="empty-state"><span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h11l5 5v13H4z"></path><path d="M14 3v6h6M8 14h8m-8 4h8"></path></svg></span><h2>' + escape(title) + '</h2><p>' + escape(message) + '</p><span class="empty-help">Fonte: ' + escape(fileName + note) + '.</span></section>';
     }
     window.GTGPRender = {
@@ -56,7 +57,7 @@
     };
 
     function sourceLabel() {
-      return state.dataset.source.simulated ? 'Demonstração · dados simulados' : 'Fonte conectada';
+      return state.dataset.source.simulated ? 'Demonstração · dados simulados' : 'Base importada';
     }
     function renderFeedback() {
       var region = document.getElementById('feedback-region');
@@ -90,7 +91,7 @@
       });
       document.getElementById('page-title').textContent = current.title;
       document.getElementById('page-description').textContent = current.description;
-      document.getElementById('sidebar-source').textContent = state.dataset ? (state.dataset.source.simulated ? 'Dados simulados' : 'Fonte conectada') : 'Carregando fonte…';
+      document.getElementById('sidebar-source').textContent = state.dataset ? (state.dataset.source.simulated ? 'Dados simulados' : 'Base importada') : 'Carregando fonte…';
       var fileName = state.dataset && state.dataset.source.fileName ? state.dataset.source.fileName : 'Base GTGP.xlsx';
       document.getElementById('sidebar-file').textContent = fileName;
       document.getElementById('footer-source').textContent = fileName;
@@ -116,7 +117,7 @@
       if (state.page === 'people') root.innerHTML = window.GTGPPeopleView.render(state.dataset, state);
       else if (state.page === 'evaluations') root.innerHTML = window.GTGPEvaluationsView.render(state.dataset);
       else if (state.page === 'quality') root.innerHTML = window.GTGPQualityView.render(state.dataset);
-      else root.innerHTML = window.GTGPOverviewView.render(state.dataset);
+      else root.innerHTML = window.GTGPOverviewView.render(state.dataset, state.overviewCeoView);
       restoreFocus(focus);
     }
     function showToast(message, isError) {
@@ -133,8 +134,8 @@
         error.code = 'INVALID_DASHBOARD_DATA';
         throw error;
       }
-      if (typeof data.source.fileName !== 'string' || typeof data.source.simulated !== 'boolean') {
-        var sourceError = new Error('source precisa informar fileName e simulated conforme docs/DATA_CONTRACT.md.');
+      if (typeof data.source.fileName !== 'string' || typeof data.source.sheetName !== 'string' || typeof data.source.simulated !== 'boolean') {
+        var sourceError = new Error('source precisa informar fileName, sheetName e simulated conforme docs/DATA_CONTRACT.md.');
         sourceError.code = 'INVALID_DASHBOARD_SOURCE';
         throw sourceError;
       }
@@ -155,12 +156,12 @@
         peopleError.code = 'INVALID_DASHBOARD_PEOPLE';
         throw peopleError;
       }
-      var qualityKeys = ['baseRows', 'agentRows', 'duplicateBaseIds', 'duplicateAgentIds', 'missingBaseIds', 'missingAgentIds', 'unmatchedBaseRows', 'unmatchedAgentRows', 'blankNames'];
+      var qualityKeys = ['rowCount', 'duplicateIds', 'missingIds', 'blankNames'];
       var invalidQuality = qualityKeys.some(function (key) {
         return typeof data.quality[key] !== 'number' || !Number.isFinite(data.quality[key]);
       });
       if (invalidQuality) {
-        var qualityError = new Error('quality precisa fornecer as nove contagens definidas em docs/DATA_CONTRACT.md.');
+        var qualityError = new Error('quality precisa fornecer as quatro contagens definidas em docs/DATA_CONTRACT.md.');
         qualityError.code = 'INVALID_DASHBOARD_QUALITY';
         throw qualityError;
       }
@@ -233,16 +234,16 @@
         var cells = group.fields.map(function (field) {
           var fieldValue = value(person, field.key);
           if (field.key === 'matricula' && !fieldValue) fieldValue = matricula;
-          var sourceText = field.source.length > 1 ? 'Disponível nas duas abas' : 'Aba ' + (field.source[0] || 'não informada');
-          var wide = /^(historicoavaliacoes|observacao)$/.test(field.key) ? ' is-wide' : '';
+          var sourceText = 'Aba ' + (field.source[0] || 'não informada');
+          var wide = /^(historicoavaliacoes|observacao|comentarios|detalhevaga)$/.test(field.key) ? ' is-wide' : '';
           return '<div class="detail-field' + wide + '"><dt>' + escape(field.label) + '</dt><dd class="' + (fieldValue ? '' : 'is-missing') + '">' + escape(fieldValue || 'Sem preenchimento') + '</dd><span class="detail-source">' + escape(sourceText) + '</span></div>';
         }).join('');
         return '<section class="detail-group"><h3>' + escape(group.name) + '</h3><dl class="detail-grid">' + cells + '</dl></section>';
       }).join('');
       document.getElementById('profile-content').innerHTML =
         '<div class="profile-shell"><header class="profile-header"><span class="profile-badge">Perfil completo</span><button class="icon-button profile-close" type="button" data-action="close-profile" aria-label="Fechar perfil"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button>' +
-        '<h2 id="profile-title">' + escape(name) + '</h2><p class="profile-subtitle">' + (matricula ? 'Matrícula ' + escape(matricula) : 'Matrícula não preenchida') + ' · dados disponíveis nas abas de origem</p><div class="profile-quickfacts">' + quickfacts + '</div></header>' +
-        '<div class="profile-scroll">' + groupsHtml + '</div><footer class="profile-footer"><span>' + numberFormat.format(fields.length) + ' campos disponíveis</span><span>Atualize os dados diretamente na planilha.</span></footer></div>';
+        '<h2 id="profile-title">' + escape(name) + '</h2><p class="profile-subtitle">' + (matricula ? 'Matrícula ' + escape(matricula) : 'Matrícula não preenchida') + ' · dados disponíveis na primeira aba</p><div class="profile-quickfacts">' + quickfacts + '</div></header>' +
+        '<div class="profile-scroll">' + groupsHtml + '</div><footer class="profile-footer"><span>' + numberFormat.format(fields.length) + ' campos disponíveis</span><span>Atualize o XLSX de origem e importe a nova versão.</span></footer></div>';
       var dialog = document.getElementById('profile-dialog');
       if (!dialog.open) dialog.showModal();
     }
@@ -308,7 +309,10 @@
     });
     document.addEventListener('change', function (event) {
       if (!event.target) return;
-      if (event.target.id === 'program-filter') {
+      if (event.target.id === 'overview-ceo-filter') {
+        state.overviewCeoView = event.target.value;
+        render();
+      } else if (event.target.id === 'program-filter') {
         state.program = event.target.value;
         state.pageNumber = 1;
         render();

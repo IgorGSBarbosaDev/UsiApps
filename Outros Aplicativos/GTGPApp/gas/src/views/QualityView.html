@@ -23,30 +23,27 @@
       var q = dataset.quality || {};
       var missingNotes = people.filter(function (person) { return !window.GTGPRender.value(person, 'nota20261'); }).length;
       var missingStages = people.filter(function (person) { return !window.GTGPRender.value(person, 'etapa20262'); }).length;
-      var critical = (Number(q.duplicateBaseIds) || 0) + (Number(q.duplicateAgentIds) || 0) + (Number(q.missingBaseIds) || 0) + (Number(q.missingAgentIds) || 0);
-      var unmatched = (Number(q.unmatchedBaseRows) || 0) + (Number(q.unmatchedAgentRows) || 0);
-      var totalIssues = critical + unmatched;
-      var rowTotal = (Number(q.baseRows) || 0) + (Number(q.agentRows) || 0);
+      var totalIssues = (Number(q.duplicateIds) || 0) + (Number(q.missingIds) || 0);
+      var rowTotal = Number(q.rowCount) || 0;
       if (!rowTotal) {
-        return '<div class="page-stack">' + window.GTGPRender.emptyState('Não há linhas para verificar', 'Quando as abas Base_Principal e TB_Agente tiverem dados, as chaves e correspondências serão resumidas aqui.') + '</div>';
+        return '<div class="page-stack">' + window.GTGPRender.emptyState('Não há linhas para verificar', 'Quando a primeira aba tiver dados, as chaves e os campos sem preenchimento serão resumidos aqui.') + '</div>';
       }
       var summaryIcon = totalIssues
         ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 20H3L12 3Z"></path><path d="M12 9v4m0 3h.01"></path></svg>'
         : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path><circle cx="12" cy="12" r="9"></circle></svg>';
       var summary = '<section class="quality-summary ' + (totalIssues ? 'is-attention' : '') + '">' + summaryIcon +
-        '<div class="quality-summary-copy"><strong>' + (totalIssues ? 'A base precisa de revisão' : 'Sem problemas de identificação') + '</strong><span>' + fmt(q.baseRows) + ' linhas na base principal · ' + fmt(q.agentRows) + ' na aba de agente</span></div>' +
+        '<div class="quality-summary-copy"><strong>' + (totalIssues ? 'A base precisa de revisão' : 'Sem problemas de identificação') + '</strong><span>' + fmt(q.rowCount) + ' linhas na primeira aba selecionada</span></div>' +
         '<span class="status-badge ' + (totalIssues ? 'is-problem' : '') + '">' + (totalIssues ? fmt(totalIssues) + ' itens' : 'Conferida') + '</span></section>';
       var checks = [
-        qualityRow('Matrículas em branco', (Number(q.missingBaseIds) || 0) + (Number(q.missingAgentIds) || 0), 'error', 'Linhas sem matrícula nas duas abas; não podem ser unidas por chave.'),
-        qualityRow('Matrículas duplicadas', (Number(q.duplicateBaseIds) || 0) + (Number(q.duplicateAgentIds) || 0), 'error', 'Ocorrências repetidas depois da primeira em cada aba.'),
-        qualityRow('Sem correspondência entre abas', unmatched, 'warning', 'Linhas com matrícula que não encontra par na outra aba.'),
+        qualityRow('Matrículas em branco', Number(q.missingIds) || 0, 'error', 'Linhas sem matrícula na primeira aba; continuam disponíveis para consulta.'),
+        qualityRow('Matrículas duplicadas', Number(q.duplicateIds) || 0, 'error', 'Ocorrências repetidas depois da primeira na primeira aba.'),
         qualityRow('Nome em branco', Number(q.blankNames) || 0, 'warning', 'O perfil continua disponível pela matrícula, mas fica mais difícil de localizar.'),
         qualityRow('Sem nota 2026.1', missingNotes, 'info', 'Campo sem preenchimento; não é tratado como nota zero.'),
         qualityRow('Sem etapa 2026.2', missingStages, 'info', 'Campo sem preenchimento; o valor pode ser incluído quando estiver disponível.')
       ].join('');
       return '<div class="page-stack">' + summary +
         '<section class="panel"><header class="panel-header"><div><h2 class="panel-title">Verificações da base</h2><p class="panel-description">Contagens fornecidas junto com os dados do painel.</p></div></header><div class="quality-list">' + checks + '</div></section>' +
-        '<div class="join-note"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg><p>A matrícula é a chave usada para unir as abas. Linhas sem par permanecem visíveis para conferência e não são descartadas.</p></div></div>';
+        '<div class="join-note"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg><p>O painel considera somente a primeira aba do workbook. Linhas sem matrícula ou com matrícula repetida continuam visíveis para conferência.</p></div></div>';
     }
     return { render: render };
   })();

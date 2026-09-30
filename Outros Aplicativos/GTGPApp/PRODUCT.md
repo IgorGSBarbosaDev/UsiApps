@@ -11,28 +11,37 @@ Apresentar os registros GT/GP em uma interface de consulta com visão geral, pes
 ## Fonte e dados
 
 - Fonte de importação: workbook XLSX autorizado fornecido fora do repositório por `GTGP_WORKBOOK_PATH`.
-- Abas de origem: `Base_Principal` e `TB_Agente`.
-- Chave de junção: `Matricula`, transportada como texto.
-- Todos os registros são simulados. O snapshot é gerado para o Apps Script e para a prévia local; não há leitura de Google Sheets em tempo de execução.
+- Aba de origem: somente a primeira aba do workbook; as demais não são consideradas nem unidas.
+- `Matricula` é transportada como texto e identifica as linhas sem descartar duplicatas ou matrículas vazias.
+- O snapshot é gerado para o Apps Script e para a prévia local; não há leitura de Google Sheets em tempo de execução. Os dados são considerados não simulados por padrão, a menos que `GTGP_WORKBOOK_SIMULATED=true` seja informado.
 - Campos vazios permanecem vazios e não são tratados como zero.
 
 ## Pessoas usuárias e contexto
 
-O painel atende à consulta da base GT/GP e à revisão de lacunas nos registros. A fonte usada nesta demonstração contém somente dados simulados. A prévia local usa os artefatos gerados e pode ser aberta como arquivo HTML independente.
+O painel atende à consulta da base GT/GP e à revisão de lacunas nos registros da primeira aba importada. A prévia local usa os artefatos gerados e pode ser aberta como arquivo HTML independente.
 
 ## Capacidades
 
-- Visão geral de totais e distribuições.
+- Visão geral com Ativos, percentual de APs, percentual de Mulheres, percentual Industrial e percentual do Pool RH.
+- Distribuição por programa e distribuição organizacional pela estrutura final do CEO, com agrupamento por VP.
 - Pesquisa e filtros de pessoas, seleção de colunas e perfil com os campos disponíveis.
 - Resumo de avaliações e campos ausentes.
-- Verificações de matrículas, correspondências entre abas e nomes vazios.
+- Verificações de matrículas duplicadas ou vazias e nomes vazios.
 - Exportação XLSX dos registros e campos selecionados, sem escrita na fonte.
+
+## Regras da visão geral
+
+- Ativos conta as linhas de pessoas da primeira aba importada. Os percentuais usam todas essas pessoas como denominador.
+- APs prioriza `Potencial 2026.1`; quando vazio, usa o potencial preenchido mais recente disponível para aquela pessoa. A quantidade sem avaliação registrada aparece no apoio do indicador.
+- Mulheres conta `Sexo` feminino. Industrial conta `Industrial` em `Industrial/Staff`; qualquer outro valor, inclusive vazio, conta como Staff. Pool RH conta `Status Trainee` igual a `Pool RH`.
+- O gráfico organizacional considera somente `AreaFimCEO1` a `AreaFimCEO5`. Para `VP`, se `AreaFimCEO1` não for Siderurgia, agrupa diretamente por `AreaFimCEO1`; caso contrário usa `AreaFimCEO3`, exceto quando esse campo indicar CEO-Presidency, situação em que usa `AreaFimCEO4`.
+- A Visão geral mantém a distribuição por programa e não apresenta etapas do ciclo 2026.2 nem a amostra tabular de registros.
 
 ## Limites operacionais
 
 - Atualizar os dados exige fornecer o novo XLSX externo por `GTGP_WORKBOOK_PATH` e regenerar `WorkbookData.gs` e o JSON local com `npm run import:workbook`.
 - O snapshot incorporado ao Apps Script só chega ao projeto remoto após sincronização com `clasp`; a implantação versionada precisa ser atualizada separadamente.
-- `gas/appsscript.json` preserva `executeAs: USER_DEPLOYING` e `access: ANYONE`. A configuração de acesso não foi alterada nesta etapa e os registros permanecem simulados.
+- `gas/appsscript.json` usa `executeAs: USER_DEPLOYING` e `access: MYSELF`; sincronização Apps Script e atualização de implantação continuam separadas da importação local.
 
 ## Diretrizes de interface
 
