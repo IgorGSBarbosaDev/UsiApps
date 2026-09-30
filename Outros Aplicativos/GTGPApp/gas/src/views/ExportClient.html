@@ -1,0 +1,149 @@
+<script>
+  window.GTGPExportClient = (function () {
+    'use strict';
+    var MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    var encoder = new TextEncoder();
+    function xmlEscape(value) {
+      return String(value == null ? '' : value)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    }
+    function columnName(index) {
+      var result = '';
+      var value = index + 1;
+      while (value > 0) {
+        var remainder = (value - 1) % 26;
+        result = String.fromCharCode(65 + remainder) + result;
+        value = Math.floor((value - 1) / 26);
+      }
+      return result;
+    }
+    function makeCell(reference, value) {
+      if (value === '') return '<c r="' + reference + '"/>';
+      return '<c r="' + reference + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEscape(value) + '</t></is></c>';
+    }
+    function crc32(bytes) {
+      var crc = 0xFFFFFFFF;
+      for (var i = 0; i < bytes.length; i += 1) {
+        crc ^= bytes[i];
+        for (var bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+    function concat(parts) {
+      var size = parts.reduce(function (sum, part) { return sum + part.length; }, 0);
+      var output = new Uint8Array(size);
+      var offset = 0;
+      parts.forEach(function (part) { output.set(part, offset); offset += part.length; });
+      return output;
+    }
+    function header(size) { return new Uint8Array(size); }
+    function set16(view, offset, value) { view.setUint16(offset, value, true); }
+    function set32(view, offset, value) { view.setUint32(offset, value >>> 0, true); }
+    function zipStore(files) {
+      var locals = [];
+      var centrals = [];
+      var localOffset = 0;
+      var date = 0x21;
+      Object.keys(files).forEach(function (name) {
+        var nameBytes = encoder.encode(name);
+        var data = encoder.encode(files[name]);
+        var crc = crc32(data);
+        var local = header(30);
+        var localView = new DataView(local.buffer);
+        set32(localView, 0, 0x04034b50); set16(localView, 4, 20); set16(localView, 6, 0);
+        set16(localView, 8, 0); set16(localView, 10, 0); set16(localView, 12, date);
+        set32(localView, 14, crc); set32(localView, 18, data.length); set32(localView, 22, data.length);
+        set16(localView, 26, nameBytes.length); set16(localView, 28, 0);
+        locals.push(local, nameBytes, data);
+        var central = header(46);
+        var centralView = new DataView(central.buffer);
+        set32(centralView, 0, 0x02014b50); set16(centralView, 4, 20); set16(centralView, 6, 20);
+        set16(centralView, 8, 0); set16(centralView, 10, 0); set16(centralView, 12, 0); set16(centralView, 14, date);
+        set32(centralView, 16, crc); set32(centralView, 20, data.length); set32(centralView, 24, data.length);
+        set16(centralView, 28, nameBytes.length); set16(centralView, 30, 0); set16(centralView, 32, 0);
+        set16(centralView, 34, 0); set16(centralView, 36, 0); set32(centralView, 38, 0); set32(centralView, 42, localOffset);
+        centrals.push(central, nameBytes);
+        localOffset += local.length + nameBytes.length + data.length;
+      });
+      var centralData = concat(centrals);
+      var end = header(22);
+      var endView = new DataView(end.buffer);
+      set32(endView, 0, 0x06054b50); set16(endView, 4, 0); set16(endView, 6, 0);
+      set16(endView, 8, Object.keys(files).length); set16(endView, 10, Object.keys(files).length);
+      set32(endView, 12, centralData.length); set32(endView, 16, localOffset); set16(endView, 20, 0);
+      return concat(locals.concat([centralData, end]));
+    }
+    function workbookFiles(dataset, payload) {
+      var fieldsByKey = new Map(dataset.fields.map(function (field) { return [field.key, field]; }));
+      var peopleById = new Map(dataset.people.map(function (person) { return [person.id, person]; }));
+      var fields = payload.fields.map(function (key) { return fieldsByKey.get(key); }).filter(Boolean);
+      var people = payload.ids.map(function (id) { return peopleById.get(id); }).filter(Boolean);
+      var headerRow = '<row r="1">' + fields.map(function (field, index) { return makeCell(columnName(index) + '1', field.label); }).join('') + '</row>';
+      var rows = people.map(function (person, personIndex) {
+        var rowNumber = personIndex + 2;
+        return '<row r="' + rowNumber + '">' + fields.map(function (field, fieldIndex) {
+          var fieldValue = person.values ? person.values[field.key] : '';
+          if (field.key === 'matricula' && !fieldValue) fieldValue = person.matricula;
+          return makeCell(columnName(fieldIndex) + rowNumber, String(fieldValue == null ? '' : fieldValue));
+        }).join('') + '</row>';
+      }).join('');
+      return {
+        '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+        '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+        'xl/workbook.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Pessoas" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+        'xl/worksheets/sheet1.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + headerRow + rows + '</sheetData></worksheet>'
+      };
+    }
+    function saveBlob(blob, fileName) {
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    }
+    function useServerFile(data) {
+      if (typeof data === 'string' && /^https?:\/\//i.test(data)) {
+        var link = document.createElement('a');
+        link.href = data; link.target = '_blank'; link.rel = 'noreferrer'; link.click();
+        return true;
+      }
+      if (!data || typeof data !== 'object') return false;
+      var url = data.downloadUrl || data.url;
+      if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+        var download = document.createElement('a');
+        download.href = url; download.target = '_blank'; download.rel = 'noreferrer'; download.click();
+        return true;
+      }
+      var contentBase64 = typeof data.contentBase64 === 'string' ? data.contentBase64 : data.base64;
+      if (typeof contentBase64 === 'string') {
+        var binary = atob(contentBase64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        saveBlob(new Blob([bytes], { type: typeof data.mimeType === 'string' ? data.mimeType : MIME }), data.name || data.fileName || 'gtgp-pessoas.xlsx');
+        return true;
+      }
+      return false;
+    }
+    function exportXlsx(dataset, payload) {
+      return window.GTGPDashboardClient.exportDashboardXlsx(payload).then(function (response) {
+        if (useServerFile(response.data)) return;
+        if (!window.GTGP_LOCAL_PREVIEW) {
+          var error = new Error('O backend confirmou a chamada, mas não retornou name, mimeType e contentBase64 para o arquivo XLSX.');
+          error.code = 'INVALID_EXPORT_RESPONSE';
+          throw error;
+        }
+        var bytes = zipStore(workbookFiles(dataset, payload));
+        var date = new Date().toISOString().slice(0, 10);
+        saveBlob(new Blob([bytes], { type: MIME }), 'gtgp-pessoas-' + date + '.xlsx');
+      });
+    }
+    return { exportXlsx: exportXlsx };
+  })();
+</script>

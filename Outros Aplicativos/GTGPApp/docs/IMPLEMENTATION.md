@@ -1,75 +1,48 @@
-# Plano de implementação — MVP GT/GP
+# Implementação do Painel GT/GP
 
-## Decisões do escopo
+## Fonte de verdade e fluxo de dados
 
-- **Fonte editável:** uma Google Sheet preparada com as abas `Base_Principal`, `TB_Agente`, `Controle` e `Instruções`. As duas abas de dados começam somente com cabeçalhos; a pessoa usuária cola os dados a partir da linha 2.
-- **Sem integração Microsoft no MVP:** sem Microsoft Graph, SharePoint, Power Automate ou importação automática. O único caminho de dados da versão conectada é Google Sheets → Apps Script → painel.
-- **Dados de demonstração:** os registros do workbook fornecido são simulados. Eles ficam na prévia local independente e não são copiados para a planilha editável.
-- **Painel somente leitura:** edição e correção acontecem na planilha; o app consulta as abas e oferece exportação XLSX no navegador.
-- **Conta do Apps Script:** o projeto independente `Dashboard GTGP` e a implantação pertencem à conta `appusiminastp@gmail.com`.
-- **Acesso à planilha:** a conta do Apps Script recebe acesso de leitor à planilha de dados; o painel não grava nela.
-- **Acesso de teste:** o manifesto usa `ANYONE` e executa como `appusiminastp@gmail.com`; qualquer conta Google conectada que tenha o link pode abrir o Web App e ver os dados carregados. Manter somente dados simulados até restringir novamente o acesso.
-- **Visual:** layout desktop com sidebar, navegação simples, cores Usiminas `#84bd00` e verde escuro, com componentes shadcn locais.
+O repositório não contém o workbook de origem. Informe o caminho do XLSX externo por `GTGP_WORKBOOK_PATH`. O importador exige as abas `Base_Principal` e `TB_Agente`, valida cabeçalhos e chaves, transporta `Matricula` como texto e mantém `simulated: true`.
 
-## Experiência e telas
+O painel junta as duas abas por `Matricula`. `scripts/import-workbook.mjs` gera `gas/src/data/WorkbookData.gs` para o Apps Script e `.artifacts/gtgp-workbook.json` para a prévia. Esses arquivos são derivados e não devem ser editados manualmente. O Apps Script consome o snapshot incluído no projeto e não consulta uma planilha remota.
 
-1. **Visão geral:** totais da base, preenchimento dos ciclos, correspondência entre abas, distribuição por programa e etapa, além de amostra de registros.
-2. **Pessoas:** busca por nome, matrícula ou cargo; filtros por programa e localidade; seleção de colunas; paginação e perfil completo.
-3. **Avaliações:** cobertura e distribuição das notas, potenciais e etapas de 2026.1/2026.2. Campos ausentes ficam em branco e não contam como zero.
-4. **Qualidade dos dados:** matrículas ausentes ou duplicadas, linhas sem correspondência, nomes vazios e campos de avaliação pendentes.
-5. **Exportação:** gera um XLSX local a partir das pessoas exibidas no painel, preservando matrícula como texto.
+## Regeneração e prévia local
 
-## Arquitetura
-
-- `src/`: React, TypeScript, Tailwind e componentes shadcn; normalização dos cabeçalhos, cruzamento pela matrícula, métricas e exportação.
-- `src/data/synthetic-preview.json`: fixture simulada usada apenas em `preview.html`.
-- `gas/Code.gs`: `doGet` e leitura das duas abas configuradas usando valores de exibição; não grava células nem adiciona interface dentro da planilha.
-- `gas/Config.gs`: ID da planilha e nomes fixos das abas de dados.
-- `gas/Index.html`: bundle HTML independente gerado para Apps Script.
-- `gas/appsscript.json`: fuso `America/Sao_Paulo`, execução privada e escopo Sheets necessário para ler pelo ID fixo.
-- `preview.html`: build independente que abre direto no navegador e usa exclusivamente a amostra simulada.
-
-## Sequência de implementação e aceite
-
-1. Preparar a Google Sheet com as quatro abas, cabeçalhos, instruções de colagem e formatação básica; confirmar que as duas abas de dados não têm registros.
-2. Implementar as telas, filtros, perfil, estados vazio/carregando/erro, indicadores, visualizações e leitura somente das duas abas de dados.
-3. Gerar `preview.html` com dados simulados, sem depender de Apps Script ou rede, para revisão visual local.
-4. Gerar `gas/Index.html` sem incorporar a fixture sintética; configurar o Apps Script para ler apenas a planilha e as abas fixadas no projeto.
-5. Sincronizar com `clasp` o projeto independente `Dashboard GTGP` autenticado como `appusiminastp@gmail.com`, criar uma versão e implantar como Web App privado. A conta precisa ter acesso de leitor à planilha.
-6. Conferir planilha vazia, testar a colagem das bases autorizadas, verificar indicadores e qualidade, revisar a exportação, conferir o escopo, então commitar e enviar somente os arquivos de `Outros Aplicativos/GTGPApp`.
-
-### Critérios de aceite
-
-- A prévia local identifica visivelmente os dados simulados e funciona ao abrir o arquivo HTML.
-- O build do Apps Script não inclui o JSON de demonstração.
-- Quando a planilha não contém registros, as telas orientam a colagem sem sugerir que filtros precisam ser limpos.
-- Quando há dados, busca, filtros, perfil completo, métricas, gráficos, qualidade e exportação usam todos os campos mapeados.
-- Dados ausentes não são convertidos em zero e o painel não grava na fonte.
-- Durante o teste, qualquer conta Google conectada pode abrir o link; antes de inserir dados reais, trocar `access` para `MYSELF` e publicar uma nova versão.
-- A planilha fica compartilhada com a conta `appusiminastp@gmail.com` com permissão de leitura.
-- Todos os artefatos do produto ficam dentro desta pasta `GTGPApp`.
-
-## Operação local
-
-Com Node.js:
+Na pasta `Outros Aplicativos/GTGPApp`, após instalar as dependências npm necessárias, configure a variável para apontar a um workbook autorizado fora do repositório:
 
 ```powershell
-npm install
-npm run typecheck
-npm run build
-npm run dev -- --mode preview
+$env:GTGP_WORKBOOK_PATH = "C:\caminho\fora-do-repositorio\Base GTGP.xlsx"
+npm run import:workbook
+npm run preview:local
+Remove-Item Env:GTGP_WORKBOOK_PATH
 ```
 
-Abra `preview.html` para usar a prévia offline. `npm run build` atualiza a prévia e `gas/Index.html`. O arquivo `.clasp.json` aponta para um projeto Apps Script e é ignorado pelo Git; `.clasprc.json` guarda credenciais e também não deve ser versionado.
+O primeiro comando atualiza os dois artefatos derivados a partir do XLSX informado. O segundo carrega as regras dos arquivos `.gs` no runtime local do Node.js e as executa sobre o JSON derivado, depois compõe as views de `gas/src/views/` em `preview.html`. Assim, a prévia e o Apps Script compartilham as regras de domínio. Abra `preview.html` diretamente no navegador; a adaptação local simula apenas a ponte `google.script.run` e usa exclusivamente dados marcados como simulados.
 
-## Sincronização e implantação Google
+## Organização do código
 
-O projeto independente `Dashboard GTGP` foi criado na conta `appusiminastp@gmail.com`; essa conta também deve ter permissão de leitor na planilha. O arquivo `.clasp.json`, ignorado pelo Git na raiz deste aplicativo, aponta `rootDir` para `gas/` e identifica o projeto remoto. `.clasprc.json` guarda credenciais e nunca deve ser versionado.
+| Pasta/arquivo | Responsabilidade |
+| --- | --- |
+| `gas/src/Code.gs` | `doGet`, montagem da resposta HTML e inclusão dos templates. |
+| `gas/src/controllers/DashboardController.gs` | Entradas públicas do Apps Script e conversão de erros em respostas da API. |
+| `gas/src/services/DashboardService.gs` | Campos, união dos registros por matrícula, ordenação e métricas de qualidade. |
+| `gas/src/services/XlsxExportService.gs` | Validação da seleção e geração do XLSX para download. |
+| `gas/src/repositories/WorkbookRepository.gs` | Validação do snapshot `GTGP_WORKBOOK_DATA` e acesso às abas derivadas. |
+| `gas/src/config/GtgpConfig.gs` | Nomes das abas, chave de junção, rótulos e configuração da exportação. |
+| `gas/src/utils/` | Normalização, conversão de valores e formato de resposta. |
+| `gas/src/data/WorkbookData.gs` | Snapshot simulado gerado pelo importador. |
+| `gas/src/views/` | `Index.html` compõe os templates; views renderizam as telas; `DashboardClient.html`, `ExportClient.html` e `AppController.html` coordenam chamadas e interação no navegador; `Styles.html` contém o CSS. |
+| `gas/scripts/build-local-preview.mjs` | Gera a prévia HTML local usando as views e o JSON derivado. |
+| `scripts/import-workbook.mjs` | Lê e valida o XLSX indicado por `GTGP_WORKBOOK_PATH` e grava os artefatos derivados. |
 
-Execute `npx clasp push --force` na raiz de `GTGPApp` para enviar os arquivos de `gas/`, depois crie uma versão e atualize a implantação. Durante a fase de teste, `access` fica em `ANYONE`, exigindo apenas uma conta Google conectada; `executeAs` continua em `USER_DEPLOYING`, usando a conta `appusiminastp@gmail.com` para ler a planilha. Antes de usar dados reais, voltar `access` para `MYSELF`, enviar o manifesto e publicar uma nova versão. O envio ao Apps Script, commit/push Git e implantação do Web App são operações distintas. O Google pode solicitar autorização de acesso ao Sheets por conta do escopo declarado.
+## Sincronização com Apps Script e implantação
 
-O Web App abre a planilha fixa pelo ID usando `SpreadsheetApp.openById`, que a documentação do Apps Script associa ao escopo `spreadsheets`. Esse escopo permite leitura e escrita no nível OAuth, mas o aplicativo só chama métodos de leitura (`getDataRange` e `getDisplayValues`); não há função de gravação, edição ou compartilhamento no código.
+O `.clasp.json` fica local, ignorado pelo Git e não deve ser copiado para documentação. Na raiz de `GTGPApp`, `npx @google/clasp push` envia os arquivos locais de `gas/` ao projeto Apps Script configurado. Isso sincroniza o código remoto, mas não altera o repositório Git e não atualiza automaticamente uma implantação Web App versionada.
 
-## Entrega Git
+Para atualizar uma implantação existente, primeiro crie uma nova versão do projeto Apps Script e depois aponte a implantação para essa versão em **Deploy > Manage deployments**. `clasp version` e `clasp redeploy` também são operações separadas do `clasp push`. Uma nova implantação criada com `clasp deploy` não equivale a atualizar a implantação existente. Consulte a [documentação oficial do clasp](https://developers.google.com/apps-script/guides/clasp) e de [versões e implantações](https://developers.google.com/apps-script/concepts/deployments).
 
-O trabalho fica na branch `feature/gtgp-mvp-appscript`. Revisar o diff e confirmar que `.clasp.json`, `.clasprc.json`, `node_modules/` e `.artifacts/` não entram no commit. Somente `Outros Aplicativos/GTGPApp/` faz parte do escopo.
+O push do Git é independente e sincroniza commits com o remoto Git. Para confirmar o estado do projeto Apps Script, consulte as implantações e versões com `npx @google/clasp deployments` e `npx @google/clasp versions`; esses comandos são somente de leitura. Registre separadamente os resultados de sincronização Git, envio de código e atualização de implantação.
+
+## Configuração Apps Script
+
+`gas/appsscript.json` mantém o fuso `America/Sao_Paulo`, `executeAs` e `access` existentes. O escopo OAuth de Sheets foi removido porque o painel usa o snapshot gerado e não acessa uma planilha em tempo de execução. Os dados continuam inteiramente simulados; mudanças para dados reais exigem revisão própria de dados e acesso.

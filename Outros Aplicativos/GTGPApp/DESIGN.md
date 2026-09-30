@@ -1,6 +1,6 @@
 ---
 name: "GT/GP · Painel de gestão"
-description: "Painel operacional de leitura da base de programas GT/GP."
+description: "Painel de consulta da base simulada de programas GT/GP."
 colors:
   deep-green: "#123d2a"
   usiminas-lime: "#84bd00"
@@ -26,69 +26,34 @@ rounded:
 
 ## Overview
 
-**Direção visual: “Da planilha à leitura operacional.”** O painel organiza uma planilha editável em navegação, indicadores, avaliações e verificações de qualidade. A aparência é sóbria e utilitária: navegação verde escura, destaque Usiminas concentrado em seleção e dados, e conteúdo em superfícies claras com alta legibilidade.
+O painel transforma o snapshot simulado gerado a partir de um workbook externo em telas de consulta. A identidade visual usa navegação verde escura, acentos Usiminas e superfícies claras. A hierarquia prioriza a visão geral, a busca de pessoas, as avaliações e as verificações de qualidade.
 
-**Características:** shell desktop recolhível; hierarquia por títulos, divisores e painéis; gráficos e tabelas compactos; estados sempre identificam ausência, carga ou falha.
+## Colors and typography
 
-## Colors
+Use verde escuro para estrutura e ações principais; reserve o verde Usiminas para identidade, seleção e destaque. Neutros claros separam conteúdo sem competir com os dados.
 
-A paleta usa verde escuro para estrutura e ações principais, verde Usiminas para seleção e destaque, e neutros claros para separar conteúdo sem competir com os dados.
-
-### Primary
-- **Verde profundo** (deep-green): sidebar, botões principais e uma série de gráficos.
-- **Verde Usiminas** (usiminas-lime): marca, navegação ativa, pontos de status e primeira série de gráficos.
-
-### Neutral
-- **Canvas** (canvas): fundo da área de trabalho.
-- **Superfície** (surface): cartões, painéis e tabelas.
-- **Texto** (foreground) e **texto secundário** (muted-foreground): títulos e valores; descrições, rótulos e metadados.
-- **Divisor** (border): contornos de painéis e separadores internos.
-
-### Named Rules
-**Regra do acento funcional.** Reserve o verde Usiminas para seleção, identidade e dados; mantenha a estrutura da navegação no verde profundo e as áreas de leitura neutras.
-
-## Typography
-
-**Interface:** pilha de sistema definida no tema; não há fonte externa nem família display separada.
-
-### Hierarchy
-- **Título de página** (peso 670; 26px no desktop, 23px em telas até 820px; line-height 1.2): nome da seção atual.
-- **Título de painel** (15px; peso 650): nome do gráfico, tabela ou grupo.
-- **Texto de apoio** (13px na introdução da página; normalmente 11–12px em painéis): explicação curta e contextual.
-- **Rótulos e células** (10–11px): cabeçalhos, metadados e valores de tabela; números usam algarismos tabulares para facilitar comparação.
+A interface usa a pilha de fontes do sistema, sem fontes externas. Títulos de página ficam entre 23 e 26px; títulos de painel, próximos de 15px; descrições e rótulos usam tamanhos menores com contraste legível. Números comparáveis usam algarismos tabulares.
 
 ## Layout
 
-O primeiro viewport desktop segue o contrato de index.html: sidebar à esquerda, barra superior com contexto e atualização, quatro indicadores em uma faixa e gráficos de distribuição antes da tabela. A sidebar é recolhível por ícone; em telas estreitas vira navegação móvel acionada pela barra superior.
+O shell desktop tem navegação lateral, barra superior e área principal limitada em largura. A visão geral começa com indicadores em grade, segue com distribuições e termina com uma amostra de registros. Em telas estreitas, indicadores e gráficos se reorganizam; tabelas largas mantêm rolagem horizontal para preservar campos.
 
-Centralize o conteúdo com largura máxima de 1640px. A página usa margens laterais de 34px no desktop, 24px até 1120px e 14px até 600px; mantenha cerca de 20px entre blocos principais. Indicadores passam de quatro colunas para uma grade 2×2 até 1120px. Gráficos e esqueletos passam de duas colunas para uma até 820px; os dois ciclos também empilham no mobile.
+## Surfaces and components
 
-Até 600px, a barra superior fica mais baixa, ações mostram somente ícones e o indicador de sincronização some. Filtros quebram em linhas; resumos e paginação ficam verticais. Tabelas largas rolam horizontalmente em vez de comprimir células ou ocultar campos.
-
-## Elevation & Depth
-
-A profundidade vem da alternância entre o canvas e painéis brancos, contornos sutis e divisores internos. Cartões de dados, tabelas e qualidade não usam sombra; menus e superfícies flutuantes podem manter a sombra discreta dos componentes shadcn.
-
-## Shapes
-
-Use os raios nomeados no frontmatter: painéis arredondados, itens de navegação menos arredondados e badges compactos. Contornos finos definem grupos; tabelas usam linhas divisórias e não viram cartões separados por linha.
-
-## Components
-
-- **Sidebar:** identidade “GT / GP”, navegação com ícones e item ativo preenchido pelo acento; status da fonte e atalho para abrir a planilha ficam no rodapé.
-- **Barra superior:** botão de menu, contexto da tela, estado/horário dos dados, atualizar e exportar XLSX. Em mobile, preservar as ações por ícone.
-- **Indicadores e Cards:** indicadores relacionados ficam agrupados em faixas com divisores. Cards de gráfico/tabela/qualidade usam cabeçalho com título e descrição, seguido pelo conteúdo.
-- **Botões e badges shadcn:** botão principal usa verde profundo; variante outline serve para ações secundárias. Badges identificam demonstração, conexão e resultado sem competir com o título.
-- **Gráficos:** Recharts dentro de ChartContainer; prefira barras com rótulos diretos, grade pontilhada discreta, tooltip e legenda quando houver categorias. A distribuição categórica segue a ordem de CHART_COLORS em src/App.tsx; os tokens chart-1–chart-5 ficam em src/index.css.
-- **Tabelas e filtros:** componentes shadcn locais para tabela, busca, selects e menu de colunas. Cabeçalho claro, linhas compactas, hover suave, valores ausentes em tom atenuado e paginação visível.
-- **Estados:** carregamento usa Skeleton no formato aproximado dos painéis; gráfico sem valores mostra ícone e mensagem centralizados; base vazia explica como preencher as abas e oferece link à planilha. Falha de carga usa Alert destrutivo com ação de tentar novamente; filtro sem resultados informa como recuperar.
-- **Perfil:** Sheet lateral apresenta todos os campos agrupados por origem; campos ausentes aparecem como “Sem preenchimento”. É uma visualização de consulta.
+- **Navegação:** marca GT/GP, acesso às quatro telas e indicação do nome/versão da fonte simulada.
+- **Barra superior:** contexto da tela, estado dos dados, atualização do snapshot e exportação XLSX.
+- **Visão geral:** indicadores, distribuições em SVG, resumos e amostra de pessoas.
+- **Pessoas:** busca, filtros, seleção de colunas, tabela paginada e acesso ao perfil completo.
+- **Avaliações:** resumo de cobertura e barras para valores preenchidos. Ausência nunca é nota zero.
+- **Qualidade:** contagens de matrícula, duplicidades, correspondências e nomes, com estados compreensíveis.
+- **Perfil:** diálogo com os campos disponíveis agrupados para leitura.
+- **Estados:** carregamento, erro, fonte vazia e resultados de filtro vazios devem explicar o estado e oferecer a próxima ação aplicável.
 
 ## Do's and Don'ts
 
-- Mantenha Google Sheets em branco como fonte real e editável; os dados são atualizados na planilha, e a tela do painel é somente leitura.
-- Trate a amostra sintética local apenas como prévia visual offline e mantenha o rótulo de demonstração explícito.
-- Não introduza integração Microsoft no MVP.
-- Preserve campos ausentes como ausentes; nunca represente ausência como nota zero.
-- Mantenha busca, filtros, perfil e exportação como operações de leitura; não ofereça edição de registros no painel.
+- Não versione o workbook de origem; forneça-o fora do repositório por `GTGP_WORKBOOK_PATH` ao regenerar o snapshot simulado.
+- Preserve todos os campos e trate `Matricula` como texto ao unir as abas `Base_Principal` e `TB_Agente`.
+- Mantenha valores ausentes em branco e preserve a natureza somente leitura do painel.
+- Identifique a demonstração como simulada na interface e na prévia local.
+- Não apresente edição de registros no painel nem introduza dados reais no snapshot de demonstração.
 - Preserve texto curto, contraste entre títulos e metadados e largura legível das tabelas.
