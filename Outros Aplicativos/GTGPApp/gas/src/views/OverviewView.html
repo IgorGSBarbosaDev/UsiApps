@@ -89,16 +89,13 @@
     function finalCeoLevels(dataset) {
       var levels = [];
       for (var level = 1; level <= 7; level += 1) {
-        if (hasField(dataset, 'areafimceo' + level) || hasField(dataset, 'descricaoceo' + level)) {
-          levels.push(level);
-        }
+        if (hasField(dataset, 'areafimceo' + level)) levels.push(level);
       }
       return levels;
     }
 
     function finalCeoValue(person, level) {
-      return window.GTGPRender.value(person, 'areafimceo' + level) ||
-        window.GTGPRender.value(person, 'descricaoceo' + level);
+      return window.GTGPRender.value(person, 'areafimceo' + level);
     }
 
     function vpValue(person) {
@@ -106,8 +103,8 @@
       var ceo3 = finalCeoValue(person, 3);
       var ceo4 = finalCeoValue(person, 4);
       if (ceo1 && normalized(ceo1) !== 'SIDERURGIA') return ceo1;
-      if (/\bCEO\s*[-–—]?\s*PRESIDENCY\b/.test(normalized(ceo3))) return ceo4 || ceo3;
-      return ceo3 || ceo4 || ceo1;
+      if (/\bCEO\s*[-–—]?\s*PRESIDENCY\b/.test(normalized(ceo3))) return ceo4;
+      return ceo3;
     }
 
     function percentage(count, total) {
