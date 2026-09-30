@@ -8,7 +8,6 @@ const require = createRequire(import.meta.url);
 const XLSX = require("xlsx");
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sourcePath = resolve(projectRoot, "../../dashboardGTGP/Base GTGP.xlsx");
 const requiredSheets = ["Base_Principal", "TB_Agente"];
 const requiredHeaders = {
   Base_Principal: ["matricula", "nome"],
@@ -87,11 +86,19 @@ function readSheet(workbook, name) {
 }
 
 function main() {
+  const configuredSourcePath = process.env.GTGP_WORKBOOK_PATH?.trim();
+  if (!configuredSourcePath) {
+    throw new Error(
+      "Defina GTGP_WORKBOOK_PATH com o caminho do arquivo XLSX de origem, mantido fora do repositório.",
+    );
+  }
+
+  const sourcePath = resolve(configuredSourcePath);
   let sourceBytes;
   try {
     sourceBytes = readFileSync(sourcePath);
   } catch {
-    throw new Error(`Fonte canônica não encontrada ou indisponível: ${sourcePath}`);
+    throw new Error(`Arquivo indicado por GTGP_WORKBOOK_PATH não encontrado ou indisponível: ${sourcePath}`);
   }
 
   const workbook = XLSX.read(sourceBytes, { type: "buffer", cellDates: false });
@@ -121,6 +128,6 @@ function main() {
 try {
   main();
 } catch (error) {
-  console.error(error instanceof Error ? error.message : "Falha ao importar a fonte canônica.");
+  console.error(error instanceof Error ? error.message : "Falha ao importar o workbook.");
   process.exitCode = 1;
 }

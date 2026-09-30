@@ -26,7 +26,7 @@ rounded:
 
 ## Overview
 
-O painel transforma o snapshot simulado do workbook canônico em telas de consulta. A identidade visual usa navegação verde escura, acentos Usiminas e superfícies claras. A hierarquia prioriza a visão geral, a busca de pessoas, as avaliações e as verificações de qualidade.
+O painel transforma o snapshot simulado gerado a partir de um workbook externo em telas de consulta. A identidade visual usa navegação verde escura, acentos Usiminas e superfícies claras. A hierarquia prioriza a visão geral, a busca de pessoas, as avaliações e as verificações de qualidade.
 
 ## Colors and typography
 
@@ -51,7 +51,7 @@ O shell desktop tem navegação lateral, barra superior e área principal limita
 
 ## Do's and Don'ts
 
-- Mantenha `dashboardGTGP/Base GTGP.xlsx` como fonte canônica dos dados simulados.
+- Não versione o workbook de origem; forneça-o fora do repositório por `GTGP_WORKBOOK_PATH` ao regenerar o snapshot simulado.
 - Preserve todos os campos e trate `Matricula` como texto ao unir as abas `Base_Principal` e `TB_Agente`.
 - Mantenha valores ausentes em branco e preserve a natureza somente leitura do painel.
 - Identifique a demonstração como simulada na interface e na prévia local.

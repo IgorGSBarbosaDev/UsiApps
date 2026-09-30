@@ -1,16 +1,16 @@
 # Contrato de dados do GTGP
 
-## Fonte canônica e atualização
+## Fonte de dados e atualização
 
-- A fonte canônica é `dashboardGTGP/Base GTGP.xlsx`, localizada dois níveis acima da raiz deste projeto. O importador resolve esse caminho a partir de `scripts/import-workbook.mjs`; não depende do diretório atual do terminal.
+- O repositório não contém o workbook de origem. O importador recebe o caminho do XLSX pela variável de ambiente `GTGP_WORKBOOK_PATH`; forneça um arquivo autorizado mantido fora do repositório.
 - Todos os registros desta fonte são simulados. O artefato gerado mantém `simulated: true` para identificá-los em toda resposta do painel.
-- Para atualizar a fonte, substitua ou atualize somente o workbook canônico, mantendo as abas `Base_Principal` e `TB_Agente`. `Base_Principal` requer `Matricula` e `Nome`; `TB_Agente` requer `Matricula`. Cabeçalhos precisam ser preenchidos e produzir chaves normalizadas únicas em cada aba.
+- Para atualizar a fonte, informe um workbook externo, mantendo as abas `Base_Principal` e `TB_Agente`. `Base_Principal` requer `Matricula` e `Nome`; `TB_Agente` requer `Matricula`. Cabeçalhos precisam ser preenchidos e produzir chaves normalizadas únicas em cada aba.
 - `Matricula` deve ser interpretada e transportada como texto. O importador converte todos os valores de célula em texto e usa os valores formatados do XLSX; não converte matrículas para números nem regrava o workbook.
-- Depois de atualizar a fonte, execute `npm run import:workbook`. Isso gera `gas/src/data/WorkbookData.gs` para o Apps Script e `.artifacts/gtgp-workbook.json` para a prévia local. Ambos são derivados e nunca devem ser editados manualmente.
+- Informe o caminho externo em `GTGP_WORKBOOK_PATH` e execute `npm run import:workbook`. Isso gera `gas/src/data/WorkbookData.gs` para o Apps Script e `.artifacts/gtgp-workbook.json` para a prévia local. Ambos são derivados e nunca devem ser editados manualmente.
 - `hash` é o SHA-256 dos bytes do arquivo. No contrato público, `source.version` é esse mesmo hash hexadecimal em minúsculas. Uma alteração nos bytes da fonte produz uma nova versão.
 - Mantenha `simulated: true` enquanto os registros forem simulados. Uma eventual troca para dados reais exige revisão e autorização próprias; não altere esse indicador como parte de uma atualização comum do workbook.
 
-O importador falha com uma mensagem de incompatibilidade se faltar uma aba ou cabeçalho obrigatório, se houver cabeçalhos vazios ou chaves normalizadas duplicadas, ou se houver dados além das colunas cabeçalhadas. Ele não imprime linhas nem valores da planilha no terminal.
+O importador exige `GTGP_WORKBOOK_PATH` e falha com uma mensagem de incompatibilidade se faltar uma aba ou cabeçalho obrigatório, se houver cabeçalhos vazios ou chaves normalizadas duplicadas, ou se houver dados além das colunas cabeçalhadas. Ele não imprime linhas nem valores da planilha no terminal.
 
 ## Artefato de origem para Apps Script
 
@@ -18,7 +18,7 @@ O importador falha com uma mensagem de incompatibilidade se faltar uma aba ou ca
 
 ```js
 {
-  fileName: "Base GTGP.xlsx",
+  fileName: "<nome do arquivo XLSX fornecido>",
   hash: "<sha256 hexadecimal>",
   simulated: true,
   sheets: [

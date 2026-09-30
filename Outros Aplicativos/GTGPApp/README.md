@@ -4,9 +4,9 @@ Painel somente leitura implementado com Google Apps Script nativo: `HtmlService`
 
 ## Fonte de dados
 
-A fonte canônica é [`dashboardGTGP/Base GTGP.xlsx`](../../dashboardGTGP/Base%20GTGP.xlsx), na raiz deste repositório. O importador consome as abas `Base_Principal` e `TB_Agente` e une os registros por `Matricula`, mantida como texto. Todos os dados são simulados.
+A pasta do repositório não mantém uma cópia do workbook. Para regenerar os dados, informe em `GTGP_WORKBOOK_PATH` o caminho de um arquivo XLSX mantido fora do repositório. O importador consome as abas `Base_Principal` e `TB_Agente` e une os registros por `Matricula`, mantida como texto. Todos os dados usados nesta demonstração são simulados.
 
-O snapshot incluído no Apps Script e os artefatos locais são derivados do workbook. Atualizar o arquivo XLSX não altera automaticamente o painel publicado. O contrato, validações e formato dos artefatos estão em [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md).
+O snapshot já incluído no código Apps Script e os artefatos locais são derivados de um workbook. Remover o arquivo-fonte do repositório não remove esse snapshot nem altera o painel publicado. O contrato, as validações e o formato dos artefatos estão em [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md).
 
 ## Regenerar dados e abrir a prévia
 
@@ -14,11 +14,13 @@ Execute na pasta `Outros Aplicativos/GTGPApp`:
 
 ```powershell
 npm install
+$env:GTGP_WORKBOOK_PATH = "C:\caminho\fora-do-repositorio\Base GTGP.xlsx"
 npm run import:workbook
 npm run preview:local
+Remove-Item Env:GTGP_WORKBOOK_PATH
 ```
 
-O importador gera `gas/src/data/WorkbookData.gs` e `.artifacts/gtgp-workbook.json`. Depois, o gerador monta a prévia local independente em `preview.html`. Abra esse arquivo diretamente no navegador; a prévia usa o snapshot simulado local e não precisa de Apps Script nem de servidor de desenvolvimento.
+O caminho pode apontar para um XLSX autorizado fora do repositório. O importador gera `gas/src/data/WorkbookData.gs` e `.artifacts/gtgp-workbook.json`. Depois, o gerador monta a prévia local independente em `preview.html`. Abra esse arquivo diretamente no navegador; a prévia usa o snapshot simulado local e não precisa de Apps Script nem de servidor de desenvolvimento.
 
 ## Organização
 
@@ -28,7 +30,7 @@ O importador gera `gas/src/data/WorkbookData.gs` e `.artifacts/gtgp-workbook.jso
 - `gas/src/repositories/`: validação e leitura do snapshot incorporado ao código.
 - `gas/src/data/WorkbookData.gs`: dados simulados gerados pelo importador.
 - `gas/src/views/`: HTML, CSS e JavaScript do navegador, separados em views e controladores de interface.
-- `scripts/import-workbook.mjs`: importação do XLSX canônico.
+- `scripts/import-workbook.mjs`: importação do XLSX informado em `GTGP_WORKBOOK_PATH`.
 - `gas/scripts/build-local-preview.mjs`: montagem da prévia sem framework de frontend.
 
 ## Sincronização e publicação
