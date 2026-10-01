@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Flash Mentoring | Portal</title>
+    <?!= include('src/views/PortalStyles') ?>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="wordmark" href="#inicio" aria-label="Flash Mentoring, início">
+          <span class="wordmark-mark" aria-hidden="true">F</span>
+          <span>Flash <strong>Mentoring</strong></span>
+        </a>
+        <span class="topbar-label">Portal de participantes</span>
+      </header>
+
+      <main id="inicio" class="main-content">
+        <section class="intro-panel" aria-labelledby="page-title">
+          <div class="intro-copy">
+            <p class="eyebrow">Conversa pontual · até 60 minutos</p>
+            <h1 id="page-title">Uma boa conversa pode abrir novas perspectivas.</h1>
+            <p class="intro-description">Conecte um desafio profissional a experiências que ajudam você a enxergar outros caminhos.</p>
+          </div>
+          <div class="intro-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+        </section>
+
+        <div id="global-notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <div id="portal-content" class="portal-content" aria-live="polite">
+          <section class="loading-card"><span class="spinner" aria-hidden="true"></span><p>Validando sua sessão e carregando o portal…</p></section>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <span>Flash Mentoring</span>
+        <span>Desenvolvimento por meio de troca e experiência.</span>
+      </footer>
+    </div>
+    <?!= include('src/views/PortalClient') ?>
+  </body>
+</html>

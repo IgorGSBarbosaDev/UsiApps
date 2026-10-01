@@ -1,0 +1,325 @@
+<script>
+  (function() {
+    'use strict';
+
+    var root = document.getElementById('portal-content');
+    var notice = document.getElementById('global-notice');
+    var bootstrap = null;
+    var requestData = { menteeRequests: [], mentorInvites: [], matches: [] };
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function callServer(name, args) {
+      return new Promise(function(resolve, reject) {
+        if (!window.google || !google.script || !google.script.run) {
+          reject(new Error('Abra o portal pelo aplicativo publicado para validar sua sessão.'));
+          return;
+        }
+        var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+        if (args && args.length) runner[name].apply(runner, args);
+        else runner[name]();
+      });
+    }
+
+    function showNotice(message, kind) {
+      notice.textContent = message || '';
+      notice.dataset.kind = kind || 'success';
+      notice.hidden = !message;
+      if (message) notice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function errorMessage(error) {
+      return error && error.message ? error.message : 'Não foi possível concluir agora. Tente novamente ou procure Talent.';
+    }
+
+    function flattenTopics(groups) {
+      var topics = [];
+      (Array.isArray(groups) ? groups : []).forEach(function(group) {
+        var category = group && group.category ? group.category : '';
+        (group && Array.isArray(group.topics) ? group.topics : []).forEach(function(item) {
+          if (typeof item === 'string') topics.push({ category: category, topicName: item });
+          else if (item && item.topicName) topics.push({ category: item.category || category, topicName: item.topicName });
+        });
+      });
+      return topics;
+    }
+
+    function emptyCard(title, body) {
+      return '<div class="empty-card"><strong>' + escapeHtml(title) + '</strong>' + escapeHtml(body) + '</div>';
+    }
+
+    function profileCard(viewer) {
+      var fields = [
+        ['Nome', viewer.displayName], ['Cargo', viewer.jobTitle],
+        ['Área / unidade', [viewer.area, viewer.unit].filter(Boolean).join(' · ')],
+        ['Público / cluster', [viewer.wcBc, viewer.cluster].filter(Boolean).join(' · ')]
+      ];
+      return '<div class="profile-strip">' + fields.map(function(field) {
+        return '<div class="profile-fact"><span>' + escapeHtml(field[0]) + '</span><strong>' + escapeHtml(field[1] || '—') + '</strong></div>';
+      }).join('') + '</div>';
+    }
+
+    function renderMentorProfile() {
+      if (!bootstrap.capabilities || bootstrap.capabilities.canManageMentorProfile !== true) return '';
+      var profile = bootstrap.mentorProfile || {};
+      var topics = flattenTopics(bootstrap.topicCatalog);
+      var selected = Array.isArray(profile.topics) ? profile.topics : [];
+      var byCategory = {};
+      topics.forEach(function(topic, index) {
+        if (!byCategory[topic.category]) byCategory[topic.category] = [];
+        var checked = selected.some(function(item) {
+          return item.category === topic.category && item.topicName === topic.topicName;
+        });
+        byCategory[topic.category].push('<label class="check-row"><input type="checkbox" name="mentor-topic" data-index="' + index + '"' + (checked ? ' checked' : '') + '> <span>' + escapeHtml(topic.topicName) + '</span></label>');
+      });
+      var groups = Object.keys(byCategory).map(function(category) {
+        return '<div class="topic-group"><h3>' + escapeHtml(category) + '</h3>' + byCategory[category].join('') + '</div>';
+      }).join('');
+      var status = profile.statusLabel ? '<p class="helper">Situação do seu cadastro: <strong>' + escapeHtml(profile.statusLabel) + '</strong></p>' : '';
+      return '<section class="section-card" id="perfil-mentor"><div class="section-heading"><div><h2>Tenho interesse em ser mentor</h2><p>Compartilhe os temas em que se sente confortável, sua experiência e quantas conversas consegue assumir ao mesmo tempo.</p>' + status + '</div><span class="step-number">01</span></div>' +
+        '<form id="mentor-profile-form" class="form-grid">' +
+        '<div class="field full"><span class="field-label">Temas de interesse</span><span class="helper">Selecione até cinco temas. Talent fará a curadoria antes da entrada no banco validado.</span><div class="topic-groups">' + (groups || '<p class="helper">A lista de temas estará disponível após a configuração do catálogo por Talent.</p>') + '</div></div>' +
+        '<div class="field full"><label for="mentor-experience">Experiência relacionada</label><textarea id="mentor-experience" name="experienceSummary" maxlength="3000" placeholder="Conte brevemente as experiências que ajudam a contextualizar os temas escolhidos.">' + escapeHtml(profile.experienceSummary || '') + '</textarea></div>' +
+        '<div class="field"><label for="mentor-capacity">Capacidade simultânea</label><select id="mentor-capacity" name="capacityLimit"><option value="1"' + (String(profile.capacityLimit || '') === '1' ? ' selected' : '') + '>1 conexão ativa por vez</option><option value="2"' + (String(profile.capacityLimit || '') === '2' ? ' selected' : '') + '>Até 2 conexões ativas por vez</option></select></div>' +
+        '<div class="field full consent-box"><label class="check-row"><input type="checkbox" name="principlesAcknowledged" required' + (profile.principlesAcknowledged ? ' checked' : '') + '> <span>Estou ciente de que a conversa é pontual e voltada a compartilhar experiências. Ela não decide promoção ou movimentação e não substitui a relação de desenvolvimento com a liderança.</span></label></div>' +
+        '<div class="field full"><div class="button-row"><button class="button" type="submit">Enviar interesse para curadoria</button><span class="helper">O envio registra interesse; a inclusão no banco depende da aprovação de Talent.</span></div></div>' +
+        '</form></section>';
+    }
+
+    function renderMenteeRequest() {
+      if (!bootstrap.capabilities || bootstrap.capabilities.canSubmitRequest !== true) return '';
+      var viewer = bootstrap.viewer || {};
+      var topics = flattenTopics(bootstrap.topicCatalog);
+      var options = topics.map(function(topic, index) {
+        return '<option value="' + index + '">' + escapeHtml(topic.category + ' · ' + topic.topicName) + '</option>';
+      }).join('');
+      return '<section class="section-card" id="nova-solicitacao"><div class="section-heading"><div><h2>Quero uma conversa de mentoria</h2><p>Confirme os dados encontrados para seu perfil e escolha um tema. O processo recomendará uma conexão; você não escolhe um mentor nominalmente.</p>' + profileCard(viewer) + '</div><span class="step-number">02</span></div>' +
+        '<form id="mentee-request-form" class="form-grid">' +
+        '<div class="field full"><label class="check-row consent-box"><input type="checkbox" name="profileConfirmed" required> <span>Confirmo que os dados de perfil acima são meus e estão corretos.</span></label></div>' +
+        '<div class="field full"><label for="request-topic">Tema</label><select id="request-topic" name="topicIndex" required><option value="">Selecione um tema</option>' + options + '</select></div>' +
+        '<div class="field"><label for="request-challenge">Qual questão ou desafio você gostaria de discutir?</label><textarea id="request-challenge" name="challengeSummary" maxlength="1200" required></textarea></div>' +
+        '<div class="field"><label for="request-outcome">O que você espera levar dessa conversa?</label><textarea id="request-outcome" name="desiredOutcome" maxlength="1200" required></textarea></div>' +
+        '<div class="field full consent-box"><label class="check-row"><input type="checkbox" name="principlesAcknowledged" required> <span>Compreendo que a conversa é uma oportunidade de orientação e troca, não uma decisão sobre promoção, remuneração, vagas ou movimentação.</span></label></div>' +
+        '<div class="field full"><div class="button-row"><button class="button" type="submit">Enviar solicitação</button><span class="helper">Uma solicitação aborda um único tema e uma necessidade concreta.</span></div></div>' +
+        '</form></section>';
+    }
+
+    function renderRequests() {
+      if (!bootstrap.capabilities || bootstrap.capabilities.canViewMyRequests !== true) return '';
+      var requests = Array.isArray(requestData.menteeRequests) ? requestData.menteeRequests : [];
+      var cards = requests.map(function(item) {
+        return '<article class="item-card"><div class="item-top"><div><h3>' + escapeHtml((item.topicCategory ? item.topicCategory + ' · ' : '') + (item.topicName || 'Solicitação')) + '</h3><p>' + escapeHtml(item.challengeSummary || '') + '</p>' + (item.desiredOutcome ? '<p><strong>Expectativa:</strong> ' + escapeHtml(item.desiredOutcome) + '</p>' : '') + '</div><span class="status-pill ' + (item.pending ? 'pending' : '') + '">' + escapeHtml(item.statusLabel || 'Em acompanhamento') + '</span></div></article>';
+      }).join('');
+      return '<section class="section-card"><div class="section-heading"><div><h2>Minhas solicitações</h2><p>Acompanhe o andamento dos seus pedidos de conversa.</p></div></div>' + (cards ? '<div class="list-stack">' + cards + '</div>' : emptyCard('Ainda não há solicitações para mostrar.', 'Quando enviar um pedido, o status aparecerá aqui.')) + '</section>';
+    }
+
+    function renderInvites() {
+      if (!bootstrap.capabilities || bootstrap.capabilities.canViewInvites !== true) return '';
+      var invites = Array.isArray(requestData.mentorInvites) ? requestData.mentorInvites : [];
+      var cards = invites.map(function(item) {
+        var actions = item.canRespond === true ? '<div class="invite-actions">' +
+          '<button type="button" class="button quiet" data-invite-action="ACCEPT" data-candidate-id="' + escapeHtml(item.candidateId) + '">Aceitar conexão</button>' +
+          '<button type="button" class="button quiet" data-invite-action="DECLINE" data-candidate-id="' + escapeHtml(item.candidateId) + '">Não consigo atender</button>' +
+          '<button type="button" class="button secondary" data-invite-action="AVAILABLE_NEXT_MONTH" data-candidate-id="' + escapeHtml(item.candidateId) + '">Disponível a partir do próximo mês</button></div>' : '';
+        var pending = '<div class="inline-note">Esta resposta ficará pendente para análise de Talent. Ela não cria um Match nem ocupa uma vaga enquanto a regra não for aprovada.</div>';
+        return '<article class="item-card"><div class="item-top"><div><h3>' + escapeHtml((item.topicCategory ? item.topicCategory + ' · ' : '') + (item.topicName || 'Convite de mentoria')) + '</h3><p>Um colaborador busca uma conversa sobre este tema.</p></div><span class="status-pill ' + (item.pending ? 'pending' : '') + '">' + escapeHtml(item.statusLabel || 'Convite recebido') + '</span></div>' +
+          (item.nextMonthPending ? pending : '') + actions + '</article>';
+      }).join('');
+      return '<section class="section-card"><div class="section-heading"><div><h2>Convites para você</h2><p>Responda aos convites encaminhados a você. Ao aceitar, o Match é formalizado e a capacidade é considerada pelo processo.</p></div></div>' + (cards ? '<div class="list-stack">' + cards + '</div>' : emptyCard('Nenhum convite pendente.', 'Convites direcionados a você serão exibidos aqui.')) + '</section>';
+    }
+
+    function renderMatchProgress(match) {
+      var status = '<span class="status-pill">' + escapeHtml(match.statusLabel || 'Em andamento') + '</span>';
+      var progress = '';
+      if (match.canUpdateProgress === true) {
+        progress = '<h4 class="subsection-title">Agendamento</h4><form class="progress-form" data-match-progress="' + escapeHtml(match.matchId) + '" data-progress-type="SCHEDULING">' +
+          '<div class="field"><label>Atualização</label><select name="value"><option value="SCHEDULED">Consegui agendar</option><option value="STILL_COORDINATING">Ainda estou alinhando</option><option value="UNABLE_TO_CONTACT">Não consegui contato</option></select></div>' +
+          '<div class="field"><label>Data combinada (quando agendada)</label><input type="date" name="scheduledAt"><small>O agendamento é combinado diretamente pela dupla, sem integração de agenda.</small></div>' +
+          '<button class="button quiet" type="submit">Atualizar agendamento</button></form>' +
+          '<h4 class="subsection-title">Realização</h4><form class="progress-form" data-match-progress="' + escapeHtml(match.matchId) + '" data-progress-type="OUTCOME">' +
+          '<div class="field"><label>Atualização</label><select name="value"><option value="REALIZED">A conversa aconteceu</option><option value="RESCHEDULED">A conversa foi reagendada</option><option value="CANCELLED">A conexão foi cancelada</option><option value="NOT_REALIZED">A conversa não acontecerá</option></select></div>' +
+          '<div class="field"><label>Nova data (quando reagendada)</label><input type="date" name="scheduledAt"></div>' +
+          '<button class="button quiet" type="submit">Atualizar realização</button></form>';
+      }
+      var pulse = '';
+      if (match.canSubmitPulse === true) pulse = renderPulseForm(match);
+      return '<article class="item-card"><div class="item-top"><div><h3>' + escapeHtml((match.topicCategory ? match.topicCategory + ' · ' : '') + (match.topicName || 'Conexão de mentoria')) + '</h3><p>' + escapeHtml(match.summary || '') + '</p></div>' + status + '</div>' + progress + pulse + '</article>';
+    }
+
+    function renderPulseForm(match) {
+      var recommendationOptions = Array.isArray(bootstrap.pulseRecommendationOptions) ? bootstrap.pulseRecommendationOptions : [];
+      var options = recommendationOptions.map(function(option) {
+        var value = typeof option === 'string' ? option : option.value;
+        var label = typeof option === 'string' ? option : option.label;
+        return '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + '</option>';
+      }).join('');
+      var recommendationField = options
+        ? '<div class="field"><label>Você recomendaria o Flash Mentoring?</label><select name="recommendationAnswer" required><option value="">Selecione</option>' + options + '</select></div>'
+        : '<div class="inline-note">A pergunta de recomendação ficará disponível quando Talent definir a escala. Você ainda pode responder às duas avaliações abaixo.</div>';
+      return '<form class="pulse-form" data-match-pulse="' + escapeHtml(match.matchId) + '"><div class="section-heading"><div><h3>Como foi sua experiência?</h3><p>O pulse aparece após o encerramento da conexão.</p></div></div>' +
+        '<div class="rating-row"><div class="field"><label>Esta conversa contribuiu para sua reflexão sobre o tema? (1–5)</label><select name="reflectionRating" required><option value="">Selecione</option>' + [1, 2, 3, 4, 5].map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label>O match foi adequado à sua necessidade? (1–5)</label><select name="matchFitRating" required><option value="">Selecione</option>' + [1, 2, 3, 4, 5].map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('') + '</select></div></div>' +
+        '<div class="form-grid" style="margin-top:14px">' + recommendationField + '<div class="field"><label>Comentário ou principal aprendizado (opcional)</label><textarea name="comment" maxlength="2000"></textarea></div></div>' +
+        '<div class="button-row"><button class="button" type="submit">Enviar pulse</button></div></form>';
+    }
+
+    function renderMatches() {
+      if (!bootstrap.capabilities || bootstrap.capabilities.canViewMatches !== true) return '';
+      var matches = Array.isArray(requestData.matches) ? requestData.matches : [];
+      var cards = matches.map(renderMatchProgress).join('');
+      return '<section class="section-card"><div class="section-heading"><div><h2>Minhas conexões</h2><p>Atualize o agendamento e, após a conversa, informe o resultado e responda ao pulse.</p></div></div>' + (cards ? '<div class="list-stack">' + cards + '</div>' : emptyCard('Nenhuma conexão formalizada ainda.', 'A conexão aparece aqui após o aceite do mentor.')) + '</section>';
+    }
+
+    function bindFormHandlers() {
+      var mentorForm = document.getElementById('mentor-profile-form');
+      if (mentorForm) mentorForm.addEventListener('submit', submitMentorProfile);
+      var requestForm = document.getElementById('mentee-request-form');
+      if (requestForm) requestForm.addEventListener('submit', submitRequest);
+      root.querySelectorAll('[data-invite-action]').forEach(function(button) {
+        button.addEventListener('click', respondToInvite);
+      });
+      root.querySelectorAll('[data-match-progress]').forEach(function(form) {
+        form.addEventListener('submit', updateMatchProgress);
+      });
+      root.querySelectorAll('[data-match-pulse]').forEach(function(form) {
+        form.addEventListener('submit', submitPulse);
+      });
+    }
+
+    function render() {
+      var viewer = bootstrap && bootstrap.viewer;
+      if (!viewer) throw new Error('O perfil não foi confirmado pelo servidor. Procure Talent.');
+      var greeting = viewer.displayName ? 'Olá, ' + escapeHtml(viewer.displayName) : 'Olá';
+      root.innerHTML = '<section class="section-card"><div class="section-heading"><div><h2>' + greeting + '</h2><p>As informações do perfil são vinculadas à sua sessão corporativa.</p></div></div>' + profileCard(viewer) + '</section>' +
+        renderMentorProfile() + renderMenteeRequest() + renderRequests() + renderInvites() + renderMatches();
+      bindFormHandlers();
+    }
+
+    function refresh() {
+      root.innerHTML = '<section class="loading-card"><span class="spinner" aria-hidden="true"></span><p>Atualizando suas informações…</p></section>';
+      return callServer('portalGetBootstrap').then(function(result) {
+        bootstrap = result || {};
+        return callServer('portalGetMyRequests').then(function(data) {
+          requestData = data || { menteeRequests: [], mentorInvites: [], matches: [] };
+          render();
+        });
+      }).catch(function(error) {
+        root.innerHTML = emptyCard('Não foi possível abrir o portal.', errorMessage(error));
+      });
+    }
+
+    function submitMentorProfile(event) {
+      event.preventDefault();
+      var form = event.currentTarget;
+      var topics = flattenTopics(bootstrap.topicCatalog);
+      var selectedTopics = Array.prototype.slice.call(form.querySelectorAll('input[name="mentor-topic"]:checked')).map(function(input) {
+        return topics[Number(input.dataset.index)];
+      }).filter(Boolean);
+      var payload = {
+        topics: selectedTopics,
+        experienceSummary: form.elements.experienceSummary.value,
+        capacityLimit: form.elements.capacityLimit.value,
+        principlesAcknowledged: form.elements.principlesAcknowledged.checked
+      };
+      setBusy(form, true);
+      var method = bootstrap.mentorProfile && bootstrap.mentorProfile.hasProfile === true
+        ? 'portalUpdateMentorProfile' : 'portalSubmitMentorProfile';
+      callServer(method, [payload]).then(function() {
+        showNotice('Seu interesse foi enviado. A inclusão no banco depende da curadoria de Talent.');
+        return refresh();
+      }).catch(function(error) {
+        showNotice(errorMessage(error), 'error');
+      }).finally(function() { setBusy(form, false); });
+    }
+
+    function submitRequest(event) {
+      event.preventDefault();
+      var form = event.currentTarget;
+      var topic = flattenTopics(bootstrap.topicCatalog)[Number(form.elements.topicIndex.value)];
+      var payload = {
+        profileConfirmed: form.elements.profileConfirmed.checked,
+        topicCategory: topic ? topic.category : '',
+        topicName: topic ? topic.topicName : '',
+        challengeSummary: form.elements.challengeSummary.value,
+        desiredOutcome: form.elements.desiredOutcome.value,
+        principlesAcknowledged: form.elements.principlesAcknowledged.checked
+      };
+      setBusy(form, true);
+      callServer('portalSubmitRequest', [payload]).then(function() {
+        showNotice('Sua solicitação foi registrada para acompanhamento.');
+        return refresh();
+      }).catch(function(error) {
+        showNotice(errorMessage(error), 'error');
+      }).finally(function() { setBusy(form, false); });
+    }
+
+    function respondToInvite(event) {
+      var button = event.currentTarget;
+      var action = button.dataset.inviteAction;
+      var candidateId = button.dataset.candidateId;
+      button.disabled = true;
+      callServer('portalRespondToInvite', [{ candidateId: candidateId, action: action }]).then(function() {
+        if (action === 'AVAILABLE_NEXT_MONTH') {
+          showNotice('Sua disponibilidade ficou pendente para análise de Talent. Nenhum Match foi criado e nenhuma vaga foi ocupada.');
+        } else if (action === 'ACCEPT') {
+          showNotice('Conexão aceita. O Match e a disponibilidade serão atualizados pelo processo.');
+        } else {
+          showNotice('Sua resposta foi registrada.');
+        }
+        return refresh();
+      }).catch(function(error) {
+        button.disabled = false;
+        showNotice(errorMessage(error), 'error');
+      });
+    }
+
+    function updateMatchProgress(event) {
+      event.preventDefault();
+      var form = event.currentTarget;
+      var payload = {
+        matchId: form.dataset.matchProgress,
+        progressType: form.dataset.progressType,
+        value: form.elements.value.value,
+        scheduledAt: form.elements.scheduledAt.value
+      };
+      setBusy(form, true);
+      callServer('portalUpdateMatchProgress', [payload]).then(function() {
+        showNotice('O andamento da conexão foi atualizado.');
+        return refresh();
+      }).catch(function(error) {
+        showNotice(errorMessage(error), 'error');
+      }).finally(function() { setBusy(form, false); });
+    }
+
+    function submitPulse(event) {
+      event.preventDefault();
+      var form = event.currentTarget;
+      var payload = {
+        matchId: form.dataset.matchPulse,
+        reflectionRating: form.elements.reflectionRating.value,
+        matchFitRating: form.elements.matchFitRating.value,
+        recommendationAnswer: form.elements.recommendationAnswer ? form.elements.recommendationAnswer.value : '',
+        comment: form.elements.comment.value
+      };
+      setBusy(form, true);
+      callServer('portalSubmitPulse', [payload]).then(function() {
+        showNotice('Obrigado por compartilhar sua experiência.');
+        return refresh();
+      }).catch(function(error) {
+        showNotice(errorMessage(error), 'error');
+      }).finally(function() { setBusy(form, false); });
+    }
+
+    function setBusy(form, busy) {
+      Array.prototype.forEach.call(form.querySelectorAll('button[type="submit"]'), function(button) {
+        button.disabled = busy;
+      });
+    }
+
+    refresh();
+  })();
+</script>

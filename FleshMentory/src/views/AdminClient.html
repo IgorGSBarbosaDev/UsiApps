@@ -1,0 +1,757 @@
+<script>
+(function() {
+  'use strict';
+
+  var state = {
+    displayName: '',
+    statusOptions: [],
+    mentors: [],
+    requests: [],
+    requestTotal: null,
+    page: 1,
+    pageSize: 20,
+    status: 'ALL',
+    search: '',
+    selectedRequest: null,
+    orderedCandidateIds: [],
+    metricsLoaded: false,
+    metricsLoading: false,
+    requestsLoading: false,
+    actionLoading: false,
+    mentorActionLoading: false,
+    bootstrapFetchId: 0,
+    requestFetchId: 0,
+    metricsFetchId: 0
+  };
+
+  var byId = function(id) { return document.getElementById(id); };
+  var dialog = byId('requestDialog');
+  var searchTimer = null;
+
+  function node(tagName, className, text) {
+    var result = document.createElement(tagName);
+    if (className) result.className = className;
+    if (text != null) result.textContent = String(text);
+    return result;
+  }
+
+  function clear(element) {
+    element.textContent = '';
+  }
+
+  function showNotice(kind, message) {
+    var notice = byId('globalNotice');
+    notice.dataset.kind = kind;
+    notice.textContent = message;
+    notice.hidden = false;
+  }
+
+  function clearNotice() {
+    var notice = byId('globalNotice');
+    notice.hidden = true;
+    notice.textContent = '';
+    delete notice.dataset.kind;
+  }
+
+  function showInlineState(container, className, message, title) {
+    clear(container);
+    var box = node('div', className);
+    if (title) box.appendChild(node('strong', '', title));
+    box.appendChild(document.createTextNode(message));
+    container.appendChild(box);
+  }
+
+  function serverError(response) {
+    var message = response && response.error && typeof response.error.message === 'string'
+      ? response.error.message
+      : 'Não foi possível concluir a operação.';
+    return { message: message, code: response && response.error ? response.error.code : '' };
+  }
+
+  function callServer(method, payload, onSuccess, onFailure) {
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      onFailure({ message: 'A comunicação com o servidor não está disponível nesta página.' });
+      return;
+    }
+
+    var runner = google.script.run
+      .withSuccessHandler(function(response) {
+        if (!response || typeof response.ok !== 'boolean') {
+          onFailure({ message: 'O servidor retornou uma resposta inválida.' });
+          return;
+        }
+        if (!response.ok) {
+          onFailure(serverError(response));
+          return;
+        }
+        onSuccess(response.data);
+      })
+      .withFailureHandler(function() {
+        onFailure({ message: 'Não foi possível comunicar com o servidor. Tente novamente.' });
+      });
+
+    try {
+      switch (method) {
+        case 'adminGetBootstrap':
+          runner.adminGetBootstrap();
+          break;
+        case 'adminListRequests':
+          runner.adminListRequests(payload);
+          break;
+        case 'adminGetRequest':
+          runner.adminGetRequest(payload);
+          break;
+        case 'adminReviewRequest':
+          runner.adminReviewRequest(payload);
+          break;
+        case 'adminReviewMentor':
+          runner.adminReviewMentor(payload);
+          break;
+        case 'adminGetMetrics':
+          runner.adminGetMetrics();
+          break;
+        default:
+          onFailure({ message: 'Operação não reconhecida pelo painel.' });
+      }
+    } catch (error) {
+      onFailure({ message: 'Não foi possível iniciar a operação. Tente novamente.' });
+    }
+  }
+
+  function readableStatus(status, label) {
+    if (label) return label;
+    return String(status || '').toLowerCase().replace(/_/g, ' ');
+  }
+
+  function setActiveTab(tabName) {
+    var names = ['requests', 'mentors', 'metrics'];
+    names.forEach(function(name) {
+      var button = byId(name === 'requests' ? 'tabRequests' : name === 'mentors' ? 'tabMentors' : 'tabMetrics');
+      var panel = byId(name === 'requests' ? 'panelRequests' : name === 'mentors' ? 'panelMentors' : 'panelMetrics');
+      var active = name === tabName;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+      panel.hidden = !active;
+    });
+    if (tabName === 'metrics' && !state.metricsLoaded && !state.metricsLoading) loadMetrics();
+  }
+
+  function moveTabWithKeyboard(currentTab, key) {
+    var tabNames = ['requests', 'mentors', 'metrics'];
+    var index = tabNames.indexOf(currentTab);
+    if (key === 'Home') index = 0;
+    else if (key === 'End') index = tabNames.length - 1;
+    else if (key === 'ArrowRight') index = (index + 1) % tabNames.length;
+    else if (key === 'ArrowLeft') index = (index + tabNames.length - 1) % tabNames.length;
+    else return false;
+    var nextName = tabNames[index];
+    var buttonId = nextName === 'requests' ? 'tabRequests' : nextName === 'mentors' ? 'tabMentors' : 'tabMetrics';
+    byId(buttonId).focus();
+    setActiveTab(nextName);
+    return true;
+  }
+
+  function renderStatusOptions() {
+    var hasSelectedStatus = state.status === 'ALL' || state.statusOptions.some(function(item) {
+      return item && item.code === state.status;
+    });
+    if (!hasSelectedStatus) state.status = 'ALL';
+    var select = byId('statusFilter');
+    while (select.options.length > 1) select.remove(1);
+    state.statusOptions.forEach(function(item) {
+      if (!item || !item.code || item.code === 'ALL') return;
+      var option = document.createElement('option');
+      option.value = item.code;
+      option.textContent = item.label || readableStatus(item.code);
+      select.appendChild(option);
+    });
+    select.value = state.status;
+    renderStatusCards();
+  }
+
+  function renderStatusCards() {
+    var root = byId('statusCards');
+    clear(root);
+    var allCount = null;
+    var knownCounts = state.statusOptions.filter(function(item) {
+      return item && typeof item.count === 'number' && isFinite(item.count) && item.count >= 0;
+    });
+    if (knownCounts.length) {
+      allCount = knownCounts.reduce(function(sum, item) { return sum + item.count; }, 0);
+    }
+
+    var cards = [{
+      code: 'ALL',
+      label: 'Todos',
+      count: allCount
+    }].concat(state.statusOptions.filter(function(item) { return item && item.code && item.code !== 'ALL'; }));
+
+    cards.forEach(function(item) {
+      var button = node('button', 'status-card' + (state.status === item.code ? ' is-selected' : ''));
+      button.type = 'button';
+      button.setAttribute('aria-pressed', state.status === item.code ? 'true' : 'false');
+      button.appendChild(node('span', 'status-card-label', item.label || readableStatus(item.code)));
+      button.appendChild(node('span', 'status-card-count', formatCount(item.count)));
+      button.addEventListener('click', function() {
+        clearNotice();
+        state.status = item.code;
+        state.page = 1;
+        byId('statusFilter').value = state.status;
+        renderStatusCards();
+        loadRequests();
+      });
+      root.appendChild(button);
+    });
+  }
+
+  function formatCount(value) {
+    if (typeof value !== 'number' || !isFinite(value)) return '—';
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  function formatDate(value) {
+    if (typeof value !== 'string' || !value) return '';
+    var date = new Date(value);
+    if (isNaN(date.getTime())) return value;
+    return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  function loadBootstrap() {
+    var fetchId = ++state.bootstrapFetchId;
+    clearNotice();
+    byId('actorName').textContent = 'Validando acesso…';
+    showInlineState(byId('mentorList'), 'loading-state', 'Carregando mentores…');
+    callServer('adminGetBootstrap', null, function(data) {
+      if (fetchId !== state.bootstrapFetchId) return;
+      state.displayName = data && typeof data.displayName === 'string' ? data.displayName : '';
+      state.statusOptions = data && Array.isArray(data.statusOptions) ? data.statusOptions : [];
+      state.mentors = data && Array.isArray(data.mentors) ? data.mentors : [];
+      byId('actorName').textContent = state.displayName || 'Acesso autorizado';
+      renderStatusOptions();
+      renderMentors();
+      byId('mentorTabCount').textContent = String(state.mentors.length);
+      loadRequests();
+    }, function(error) {
+      if (fetchId !== state.bootstrapFetchId) return;
+      byId('actorName').textContent = 'Acesso indisponível';
+      showInlineState(byId('requestList'), 'error-state', error.message);
+      showInlineState(byId('mentorList'), 'error-state', error.message);
+      clear(byId('statusCards'));
+      byId('requestTabCount').textContent = '—';
+      byId('mentorTabCount').textContent = '—';
+      showNotice('error', error.message);
+    });
+  }
+
+  function loadRequests() {
+    var fetchId = ++state.requestFetchId;
+    state.requestsLoading = true;
+    byId('requestList').setAttribute('aria-busy', 'true');
+    if (!state.requests.length) {
+      showInlineState(byId('requestList'), 'loading-state', 'Carregando solicitações…');
+    }
+
+    var payload = {
+      status: state.status,
+      search: state.search,
+      page: state.page,
+      pageSize: state.pageSize
+    };
+    callServer('adminListRequests', payload, function(data) {
+      if (fetchId !== state.requestFetchId) return;
+      state.requestsLoading = false;
+      state.requests = data && Array.isArray(data.items) ? data.items : [];
+      state.page = data && typeof data.page === 'number' ? data.page : state.page;
+      state.pageSize = data && typeof data.pageSize === 'number' ? data.pageSize : state.pageSize;
+      state.requestTotal = data && typeof data.total === 'number' ? data.total : null;
+      byId('requestList').setAttribute('aria-busy', 'false');
+      renderRequests();
+    }, function(error) {
+      if (fetchId !== state.requestFetchId) return;
+      state.requestsLoading = false;
+      byId('requestList').setAttribute('aria-busy', 'false');
+      showInlineState(byId('requestList'), 'error-state', error.message);
+      byId('requestListMeta').textContent = '';
+      showNotice('error', error.message);
+      renderPagination();
+    });
+  }
+
+  function renderRequests() {
+    var root = byId('requestList');
+    clear(root);
+    byId('requestTabCount').textContent = state.requestTotal == null ? String(state.requests.length) : formatCount(state.requestTotal);
+    byId('requestListMeta').textContent = state.requestTotal == null
+      ? state.requests.length + ' solicitação(ões) nesta página'
+      : formatCount(state.requestTotal) + ' solicitação(ões) encontradas';
+
+    if (!state.requests.length) {
+      showInlineState(root, 'empty-state', 'Quando houver solicitações para este filtro, elas aparecerão aqui.', 'Nenhuma solicitação encontrada');
+      renderPagination();
+      return;
+    }
+
+    state.requests.forEach(function(item) {
+      var card = node('article', 'request-card');
+      var main = node('div', 'request-main');
+      var titleLine = node('div', 'request-title-line');
+      titleLine.appendChild(node('h3', '', item.topicName || 'Tema não informado'));
+      var pill = node('span', 'status-pill', readableStatus(item.status, item.statusLabel) || 'Status não informado');
+      pill.dataset.status = item.status || '';
+      titleLine.appendChild(pill);
+      main.appendChild(titleLine);
+
+      var personParts = [];
+      if (item.menteeName) personParts.push(item.menteeName);
+      if (item.menteeJobTitle) personParts.push(item.menteeJobTitle);
+      main.appendChild(node('p', 'request-summary', personParts.join(' · ') || 'Contexto do mentorado disponível na revisão'));
+
+      var metaParts = [];
+      if (item.topicCategory) metaParts.push(item.topicCategory);
+      if (item.menteeArea) metaParts.push(item.menteeArea);
+      if (item.menteeUnit) metaParts.push(item.menteeUnit);
+      if (metaParts.length) main.appendChild(node('div', 'request-meta-line', metaParts.join(' · ')));
+
+      var actions = node('div', 'request-actions');
+      if (item.submittedAt) actions.appendChild(node('span', 'request-date', formatDate(item.submittedAt)));
+      var reviewButton = node('button', 'button button-primary button-small', 'Revisar');
+      reviewButton.type = 'button';
+      reviewButton.disabled = !item.requestId;
+      reviewButton.setAttribute('aria-label', item.topicName ? 'Revisar solicitação sobre ' + item.topicName : 'Revisar solicitação');
+      reviewButton.addEventListener('click', function() { openRequest(item.requestId); });
+      actions.appendChild(reviewButton);
+
+      card.appendChild(main);
+      card.appendChild(actions);
+      root.appendChild(card);
+    });
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var totalPages = state.requestTotal == null
+      ? null
+      : Math.max(1, Math.ceil(state.requestTotal / state.pageSize));
+    var canGoNext = totalPages == null
+      ? state.requests.length >= state.pageSize
+      : state.page < totalPages;
+    byId('previousPage').disabled = state.page <= 1 || state.requestsLoading;
+    byId('nextPage').disabled = !canGoNext || state.requestsLoading;
+    byId('pageLabel').textContent = totalPages == null
+      ? 'Página ' + state.page
+      : 'Página ' + state.page + ' de ' + totalPages;
+  }
+
+  function appendDetailField(root, label, value, wide) {
+    var card = node('div', 'detail-card' + (wide ? ' detail-card-wide' : ''));
+    card.appendChild(node('p', 'detail-label', label));
+    card.appendChild(node('p', 'detail-value', value || 'Não informado'));
+    root.appendChild(card);
+  }
+
+  function openRequest(requestId) {
+    if (!requestId || state.actionLoading) return;
+    state.selectedRequest = null;
+    state.orderedCandidateIds = [];
+    setDialogActionsDisabled(true);
+    showInlineState(byId('requestDetail'), 'loading-state', 'Carregando contexto e shortlist…');
+    if (!dialog.open) dialog.showModal();
+
+    callServer('adminGetRequest', requestId, function(data) {
+      state.selectedRequest = data;
+      state.orderedCandidateIds = data && Array.isArray(data.candidates)
+        ? data.candidates.map(function(candidate) { return candidate.candidateId; }).filter(Boolean)
+        : [];
+      renderRequestDetail();
+      setDialogActionsDisabled(false);
+    }, function(error) {
+      showInlineState(byId('requestDetail'), 'error-state', error.message);
+      showNotice('error', error.message);
+      setDialogActionsDisabled(true);
+    });
+  }
+
+  function renderRequestDetail() {
+    var request = state.selectedRequest;
+    var root = byId('requestDetail');
+    clear(root);
+    if (!request) {
+      showInlineState(root, 'empty-state', 'Não foi possível carregar esta solicitação.');
+      return;
+    }
+
+    var top = node('div', 'detail-topline');
+    var titleGroup = node('div', '');
+    titleGroup.appendChild(node('h3', '', request.mentee && request.mentee.displayName ? request.mentee.displayName : 'Mentorado'));
+    var topic = [request.topicCategory, request.topicName].filter(Boolean).join(' · ');
+    titleGroup.appendChild(node('p', 'detail-topic', topic || 'Tema não informado'));
+    top.appendChild(titleGroup);
+    var status = node('span', 'status-pill', readableStatus(request.status, request.statusLabel) || 'Status não informado');
+    status.dataset.status = request.status || '';
+    top.appendChild(status);
+    root.appendChild(top);
+
+    var mentee = request.mentee || {};
+    var context = node('div', 'detail-grid');
+    appendDetailField(context, 'Cargo', mentee.jobTitle, false);
+    appendDetailField(context, 'Área / unidade', [mentee.area, mentee.unit].filter(Boolean).join(' · '), false);
+    appendDetailField(context, 'Público', mentee.audience, false);
+    appendDetailField(context, 'Gestor imediato', mentee.managerDisplayName, false);
+    appendDetailField(context, 'Questão ou desafio', request.challengeSummary, true);
+    appendDetailField(context, 'Expectativa da conversa', request.desiredOutcome, true);
+    root.appendChild(context);
+
+    root.appendChild(node('h3', 'detail-section-title', 'Shortlist recomendada'));
+    if (!state.orderedCandidateIds.length) {
+      showInlineState(root, 'empty-state', 'Não há opções para aprovar. Encaminhe a exceção para Talent.');
+      return;
+    }
+    var candidatesRoot = node('div', 'candidate-list');
+    state.orderedCandidateIds.forEach(function(id, index) {
+      var candidate = findCandidate(id);
+      if (!candidate) return;
+      var card = node('article', 'candidate-card');
+      card.appendChild(node('div', 'candidate-rank', String(index + 1)));
+      var main = node('div', 'candidate-main');
+      main.appendChild(node('h4', '', candidate.displayName || 'Mentor'));
+      var contextParts = [candidate.jobTitle, candidate.area, candidate.unit, candidate.cluster].filter(Boolean);
+      main.appendChild(node('p', 'candidate-context', contextParts.join(' · ') || 'Dados organizacionais não informados'));
+      var capacity = typeof candidate.availableSlots === 'number'
+        ? (candidate.availableSlots === 1 ? '1 slot disponível' : candidate.availableSlots + ' slots disponíveis')
+        : 'Disponibilidade não informada';
+      main.appendChild(node('p', 'candidate-capacity', capacity));
+      if (candidate.rationale) main.appendChild(node('p', 'candidate-rationale', 'Justificativa: ' + candidate.rationale));
+      card.appendChild(main);
+
+      var move = node('div', 'candidate-move');
+      var up = node('button', 'button button-quiet', '↑');
+      up.type = 'button';
+      up.disabled = index === 0;
+      up.setAttribute('aria-label', 'Mover ' + (candidate.displayName || 'mentor') + ' para cima');
+      up.addEventListener('click', function() { moveCandidate(index, -1); });
+      var down = node('button', 'button button-quiet', '↓');
+      down.type = 'button';
+      down.disabled = index === state.orderedCandidateIds.length - 1;
+      down.setAttribute('aria-label', 'Mover ' + (candidate.displayName || 'mentor') + ' para baixo');
+      down.addEventListener('click', function() { moveCandidate(index, 1); });
+      move.appendChild(up);
+      move.appendChild(down);
+      card.appendChild(move);
+      candidatesRoot.appendChild(card);
+    });
+    root.appendChild(candidatesRoot);
+  }
+
+  function findCandidate(candidateId) {
+    if (!state.selectedRequest || !Array.isArray(state.selectedRequest.candidates)) return null;
+    for (var i = 0; i < state.selectedRequest.candidates.length; i += 1) {
+      if (state.selectedRequest.candidates[i].candidateId === candidateId) return state.selectedRequest.candidates[i];
+    }
+    return null;
+  }
+
+  function moveCandidate(index, offset) {
+    var target = index + offset;
+    if (target < 0 || target >= state.orderedCandidateIds.length) return;
+    var values = state.orderedCandidateIds.slice();
+    var current = values[index];
+    values[index] = values[target];
+    values[target] = current;
+    state.orderedCandidateIds = values;
+    renderRequestDetail();
+  }
+
+  function setDialogActionsDisabled(disabled) {
+    byId('approveRequest').disabled = disabled || !state.orderedCandidateIds.length;
+    byId('regenerateRequest').disabled = disabled;
+    byId('escalateRequest').disabled = disabled;
+  }
+
+  function setActionLoading(loading) {
+    state.actionLoading = loading;
+    byId('approveRequest').disabled = loading || !state.orderedCandidateIds.length;
+    byId('regenerateRequest').disabled = loading;
+    byId('escalateRequest').disabled = loading;
+  }
+
+  function reviewRequest(action) {
+    var request = state.selectedRequest;
+    if (!request || !request.requestId || state.actionLoading) return;
+
+    var message = '';
+    if (action === 'APPROVE') {
+      if (!state.orderedCandidateIds.length) return;
+      var orderNames = state.orderedCandidateIds.map(function(id, index) {
+        var candidate = findCandidate(id);
+        return (index + 1) + '. ' + (candidate && candidate.displayName ? candidate.displayName : 'Mentor');
+      }).join('\n');
+      message = 'Aprovar a shortlist nesta ordem?\n\n' + orderNames;
+    } else if (action === 'REGENERATE') {
+      message = 'Pedir novas opções para esta solicitação? A shortlist atual será substituída apenas neste caso.';
+    } else {
+      message = 'Encaminhar a exceção para revisão de Talent? Nenhuma mensagem será enviada ao mentorado ou ao mentor.';
+    }
+    if (!window.confirm(message)) return;
+
+    var payload = {
+      requestId: request.requestId,
+      action: action
+    };
+    if (action === 'APPROVE') payload.candidateIds = state.orderedCandidateIds.slice();
+    setActionLoading(true);
+    callServer('adminReviewRequest', payload, function() {
+      setActionLoading(false);
+      dialog.close();
+      state.selectedRequest = null;
+      var successMessage = action === 'APPROVE'
+        ? 'Ordem aprovada. O convite seguirá a sequência validada.'
+        : action === 'REGENERATE'
+          ? 'Solicitação enviada para busca de novas opções.'
+          : 'Exceção encaminhada para Talent. Nenhuma resposta negativa automática foi enviada.';
+      state.metricsLoaded = false;
+      loadBootstrap();
+      showNotice('success', successMessage);
+    }, function(error) {
+      setActionLoading(false);
+      setDialogActionsDisabled(false);
+      showNotice('error', error.message);
+    });
+  }
+
+  function mentorStatusLabel(status) {
+    var labels = {
+      PENDING_REVIEW: 'Em revisão',
+      ACTIVE: 'Ativo',
+      PAUSED: 'Pausado'
+    };
+    return labels[status] || readableStatus(status) || 'Status não informado';
+  }
+
+  function renderMentors() {
+    var root = byId('mentorList');
+    clear(root);
+    if (!state.mentors.length) {
+      showInlineState(root, 'empty-state', 'Mentores disponíveis para revisão aparecerão aqui.', 'Nenhum mentor para exibir');
+      return;
+    }
+
+    state.mentors.forEach(function(mentor) {
+      var card = node('article', 'mentor-card');
+      var main = node('div', 'mentor-main');
+      var titleLine = node('div', 'mentor-name-line');
+      titleLine.appendChild(node('h3', '', mentor.displayName || 'Mentor'));
+      var pill = node('span', 'status-pill', mentorStatusLabel(mentor.status));
+      pill.dataset.status = mentor.status || '';
+      titleLine.appendChild(pill);
+      main.appendChild(titleLine);
+
+      var context = [mentor.jobTitle, mentor.area, mentor.unit].filter(Boolean).join(' · ');
+      main.appendChild(node('p', 'mentor-context', context || 'Dados organizacionais não informados'));
+      if (Array.isArray(mentor.topics) && mentor.topics.length) {
+        var topics = node('div', 'mentor-topics');
+        mentor.topics.forEach(function(topic) { topics.appendChild(node('span', 'topic-pill', topic)); });
+        main.appendChild(topics);
+      }
+      if (mentor.experienceSummary) main.appendChild(node('p', 'mentor-experience', mentor.experienceSummary));
+
+      var capacityParts = [];
+      if (typeof mentor.capacityLimit === 'number') capacityParts.push('Capacidade: ' + mentor.capacityLimit);
+      if (typeof mentor.activeConnections === 'number') capacityParts.push('Conexões ativas: ' + mentor.activeConnections);
+      if (typeof mentor.availableSlots === 'number') {
+        capacityParts.push(mentor.availableSlots === 1 ? '1 slot disponível' : mentor.availableSlots + ' slots disponíveis');
+      }
+      if (capacityParts.length) main.appendChild(node('div', 'mentor-capacity', capacityParts.join(' · ')));
+
+      var actions = node('div', 'mentor-actions');
+      var action = mentorActionForStatus(mentor.status);
+      if (action) {
+        var button = node('button', action === 'PAUSE' ? 'button button-secondary button-small' : 'button button-primary button-small', mentorActionLabel(action));
+        button.type = 'button';
+        button.disabled = !mentor.mentorId;
+        button.addEventListener('click', function() { reviewMentor(mentor, action, button); });
+        actions.appendChild(button);
+      }
+      card.appendChild(main);
+      card.appendChild(actions);
+      root.appendChild(card);
+    });
+  }
+
+  function mentorActionForStatus(status) {
+    if (status === 'PENDING_REVIEW') return 'APPROVE';
+    if (status === 'ACTIVE') return 'PAUSE';
+    if (status === 'PAUSED') return 'REACTIVATE';
+    return '';
+  }
+
+  function mentorActionLabel(action) {
+    if (action === 'APPROVE') return 'Aprovar mentor';
+    if (action === 'PAUSE') return 'Pausar novas recomendações';
+    return 'Reativar mentor';
+  }
+
+  function reviewMentor(mentor, action, button) {
+    if (!mentor || !mentor.mentorId || state.mentorActionLoading) return;
+    var confirmation = action === 'APPROVE'
+      ? 'Aprovar este mentor no banco validado por Talent?'
+      : action === 'PAUSE'
+        ? 'Pausar este mentor para novas recomendações? Conversas já aceitas permanecem sob acompanhamento.'
+        : 'Reativar este mentor para novas recomendações?';
+    if (!window.confirm(confirmation)) return;
+
+    clearNotice();
+    state.mentorActionLoading = true;
+    button.disabled = true;
+    callServer('adminReviewMentor', { mentorId: mentor.mentorId, action: action }, function() {
+      state.mentorActionLoading = false;
+      state.metricsLoaded = false;
+      loadBootstrap();
+      showNotice('success', action === 'PAUSE'
+        ? 'Mentor pausado para novas recomendações.'
+        : action === 'REACTIVATE'
+          ? 'Mentor reativado.'
+          : 'Mentor aprovado no banco.');
+    }, function(error) {
+      state.mentorActionLoading = false;
+      button.disabled = false;
+      showNotice('error', error.message);
+    });
+  }
+
+  function loadMetrics() {
+    var fetchId = ++state.metricsFetchId;
+    clearNotice();
+    state.metricsLoading = true;
+    showInlineState(byId('metricsGrid'), 'loading-state', 'Carregando indicadores…');
+    clear(byId('metricsPeriod'));
+    callServer('adminGetMetrics', null, function(data) {
+      if (fetchId !== state.metricsFetchId) return;
+      state.metricsLoading = false;
+      state.metricsLoaded = true;
+      renderMetrics(data);
+    }, function(error) {
+      if (fetchId !== state.metricsFetchId) return;
+      state.metricsLoading = false;
+      showInlineState(byId('metricsGrid'), 'error-state', error.message);
+      showNotice('error', error.message);
+    });
+  }
+
+  function metricCard(title, value, detail) {
+    var card = node('article', 'metric-card');
+    card.appendChild(node('p', 'metric-label', title));
+    card.appendChild(node('p', 'metric-value', value));
+    if (detail) card.appendChild(node('p', 'metric-detail', detail));
+    return card;
+  }
+
+  function numberText(value, fractionDigits) {
+    if (typeof value !== 'number' || !isFinite(value)) return '—';
+    return new Intl.NumberFormat('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: fractionDigits == null ? 0 : fractionDigits
+    }).format(value);
+  }
+
+  function renderMetrics(data) {
+    var root = byId('metricsGrid');
+    clear(root);
+    var period = data.periodLabel || 'Período informado pelo serviço';
+    if (data.generatedAt) period += ' · Atualizado em ' + formatDate(data.generatedAt);
+    byId('metricsPeriod').textContent = period;
+
+    root.appendChild(metricCard(
+      'Mentores cadastrados',
+      numberText(data.registeredMentors, 0),
+      'Tamanho do banco validado e ativo'
+    ));
+    root.appendChild(metricCard(
+      'Solicitações recebidas',
+      numberText(data.requestsReceived, 0),
+      'Demanda pela iniciativa no período'
+    ));
+
+    var rate = data.realizationRate || {};
+    var realizationDetail = (rate.realizedCount == null ? '—' : numberText(rate.realizedCount, 0)) +
+      ' conversas realizadas / ' +
+      (rate.acceptedCount == null ? '—' : numberText(rate.acceptedCount, 0)) +
+      ' matches aceitos';
+    root.appendChild(metricCard(
+      'Taxa de realização',
+      rate.percentage == null ? '—' : numberText(rate.percentage, 1) + '%',
+      realizationDetail
+    ));
+
+    var experience = data.menteeExperience || {};
+    var experienceCard = node('article', 'metric-card');
+    experienceCard.appendChild(node('p', 'metric-label', 'Experiência do mentorado'));
+    var scoreGrid = node('div', 'metric-experience');
+    var reflection = node('div', 'experience-line');
+    reflection.appendChild(node('span', '', 'Contribuição para a reflexão'));
+    reflection.appendChild(node('strong', '', experience.reflectionAverage == null ? '—' : numberText(experience.reflectionAverage, 1) + ' / 5'));
+    scoreGrid.appendChild(reflection);
+    var fit = node('div', 'experience-line');
+    fit.appendChild(node('span', '', 'Adequação do match'));
+    fit.appendChild(node('strong', '', experience.matchFitAverage == null ? '—' : numberText(experience.matchFitAverage, 1) + ' / 5'));
+    scoreGrid.appendChild(fit);
+    experienceCard.appendChild(scoreGrid);
+    experienceCard.appendChild(node('p', 'metric-detail',
+      experience.responses == null ? 'Respostas: não informadas' : 'Respostas do pulse: ' + numberText(experience.responses, 0)));
+    root.appendChild(experienceCard);
+  }
+
+  byId('tabRequests').addEventListener('click', function() { setActiveTab('requests'); });
+  byId('tabMentors').addEventListener('click', function() { setActiveTab('mentors'); });
+  byId('tabMetrics').addEventListener('click', function() { setActiveTab('metrics'); });
+  document.querySelectorAll('[role="tab"]').forEach(function(button) {
+    button.addEventListener('keydown', function(event) {
+      if (moveTabWithKeyboard(button.dataset.tab, event.key)) event.preventDefault();
+    });
+  });
+  byId('statusFilter').addEventListener('change', function(event) {
+    clearNotice();
+    state.status = event.target.value || 'ALL';
+    state.page = 1;
+    renderStatusCards();
+    loadRequests();
+  });
+  byId('requestSearch').addEventListener('input', function(event) {
+    clearNotice();
+    state.search = event.target.value.trim();
+    state.page = 1;
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(loadRequests, 300);
+  });
+  byId('refreshRequests').addEventListener('click', function() {
+    clearNotice();
+    loadRequests();
+  });
+  byId('refreshMentors').addEventListener('click', loadBootstrap);
+  byId('refreshMetrics').addEventListener('click', function() {
+    state.metricsLoaded = false;
+    loadMetrics();
+  });
+  byId('previousPage').addEventListener('click', function() {
+    if (state.page <= 1 || state.requestsLoading) return;
+    clearNotice();
+    state.page -= 1;
+    loadRequests();
+  });
+  byId('nextPage').addEventListener('click', function() {
+    if (state.requestsLoading) return;
+    clearNotice();
+    state.page += 1;
+    loadRequests();
+  });
+  byId('closeDialog').addEventListener('click', function() { dialog.close(); });
+  byId('approveRequest').addEventListener('click', function() { reviewRequest('APPROVE'); });
+  byId('regenerateRequest').addEventListener('click', function() { reviewRequest('REGENERATE'); });
+  byId('escalateRequest').addEventListener('click', function() { reviewRequest('ESCALATE_TO_TALENT'); });
+
+  dialog.addEventListener('click', function(event) {
+    if (event.target === dialog) dialog.close();
+  });
+
+  loadBootstrap();
+})();
+</script>
