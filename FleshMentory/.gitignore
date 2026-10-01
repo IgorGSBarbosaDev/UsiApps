@@ -1,0 +1,5 @@
+# Local Apps Script project identifier; never commit it.
+.clasp.json
+
+# Source proposal contains internal process details; keep it local in this public repository.
+/Flash_Mentoring_Proposta_Metodologica_Validacao_Tecnica.docx
